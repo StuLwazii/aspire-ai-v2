@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { Link } from "@tanstack/react-router";
 import { startConversation, continueConversation, rateTicket, markUserResolution } from "@/lib/tickets.functions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,7 @@ import { ChatBubble, TypingIndicator } from "./ChatBubble";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
-import { Send, ThumbsUp, ThumbsDown, Ticket as TicketIcon, MessageCircle, Bot, User as UserIcon, CheckCircle2, XCircle } from "lucide-react";
+import { Send, ThumbsUp, ThumbsDown, Ticket as TicketIcon, MessageCircle, Bot, User as UserIcon, CheckCircle2, XCircle, ArrowLeft } from "lucide-react";
 
 type Ticket = Database["public"]["Tables"]["tickets"]["Row"] & {
   resolution_type?: "self_service" | "escalated" | "pending";
@@ -130,6 +131,9 @@ export function ChatPortal() {
   if (stage === "form") {
     return (
       <Card className="w-full max-w-md p-8">
+        <Link to="/" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground mb-4">
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to home
+        </Link>
         <div className="flex items-center gap-2 mb-2">
           <div className="h-9 w-9 rounded-lg bg-accent flex items-center justify-center">
             <MessageCircle className="h-5 w-5 text-accent-foreground" />
@@ -185,9 +189,9 @@ export function ChatPortal() {
   return (
     <Card className="w-full max-w-2xl h-[calc(100vh-2rem)] sm:h-[80vh] flex flex-col overflow-hidden">
       <header className="px-4 py-3 border-b flex items-center gap-3">
-        <div className="h-9 w-9 rounded-lg bg-accent flex items-center justify-center">
-          <MessageCircle className="h-5 w-5 text-accent-foreground" />
-        </div>
+        <Link to="/" aria-label="Back to home" className="h-9 w-9 rounded-lg bg-accent flex items-center justify-center hover:opacity-80">
+          <ArrowLeft className="h-4 w-4 text-accent-foreground" />
+        </Link>
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm">Helix Assistant</div>
           {ticket && (
