@@ -5,15 +5,18 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
-const STATUSES = ["open", "in_progress", "resolved"] as const;
+const STATUSES = ["open", "in_progress", "escalated", "resolved"] as const;
+const RESOLUTION_TYPES = ["self_service", "escalated", "pending"] as const;
+const AGENT_STATUSES = ["available", "busy", "offline"] as const;
+const PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 type Category = (typeof CATEGORIES)[number];
 
 const TONE_PROMPTS: Record<Category, string> = {
-  IT: "Use a friendly, technical tone. Acknowledge the issue, provide ONE concrete troubleshooting step, and state the escalation path if the step fails.",
-  HR: "Use a formal, empathetic tone. Acknowledge with empathy, state the next HR process step, and give a concrete timeline (e.g. 'within 2 business days').",
-  Finance: "Use a formal, precise tone. Confirm receipt, state the policy or next approval step, and include a short reference number (format REF-XXXXXX).",
-  Operations: "Use an urgent, action-oriented tone. Confirm urgency, state the immediate action being taken, and assign a priority level (P1/P2/P3).",
+  IT: "Friendly + technical. Acknowledge, give clear numbered steps, and state escalation path if steps fail.",
+  HR: "Formal + empathetic. Acknowledge with empathy, give numbered steps where applicable, share timelines.",
+  Finance: "Formal + precise. Confirm receipt, give clear numbered steps, include policy refs (REF-XXXXXX) where useful.",
+  Operations: "Urgent + action-oriented. Confirm urgency, give clear numbered steps, state priority (P1/P2/P3).",
 };
 
 async function callAI(body: unknown) {
@@ -30,39 +33,71 @@ async function callAI(body: unknown) {
   return res.json();
 }
 
-async function classify(message: string): Promise<Category> {
+async function classifyAndDecide(message: string): Promise<{
+  category: Category;
+  resolution: "self_service" | "escalated";
+  reason: string;
+  priority: "low" | "medium" | "high" | "critical";
+}> {
   const json = await callAI({
     model: "google/gemini-2.5-flash",
     messages: [
-      { role: "system", content: "Classify the help-desk ticket into exactly one of: HR, IT, Finance, Operations. Use the tool." },
+      {
+        role: "system",
+        content:
+          "You triage help-desk tickets. (1) Classify into exactly one of: HR, IT, Finance, Operations. (2) Decide SELF_SERVICE (the user can resolve it themselves by following clear instructions: password resets, how-to questions, policy questions, process questions, etc.) vs ESCALATED (requires a human to physically act: broken hardware, payroll correction, network outage, contract signing, manual approval, maintenance, disciplinary, etc.). (3) Assign a priority (low/medium/high/critical). (4) Give a one-sentence reason. Call the tool.",
+      },
       { role: "user", content: message },
     ],
     tools: [{
       type: "function",
       function: {
-        name: "classify_ticket",
-        description: "Assign a department category to the ticket",
+        name: "triage_ticket",
+        description: "Classify the ticket and decide whether it is self-service or needs human escalation",
         parameters: {
           type: "object",
-          properties: { category: { type: "string", enum: CATEGORIES as unknown as string[] } },
-          required: ["category"],
+          properties: {
+            category: { type: "string", enum: CATEGORIES as unknown as string[] },
+            resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
+            priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+            reason: { type: "string" },
+          },
+          required: ["category", "resolution", "priority", "reason"],
           additionalProperties: false,
         },
       },
     }],
-    tool_choice: { type: "function", function: { name: "classify_ticket" } },
+    tool_choice: { type: "function", function: { name: "triage_ticket" } },
   });
   const call = json.choices?.[0]?.message?.tool_calls?.[0];
-  const args = call?.function?.arguments ? JSON.parse(call.function.arguments) : null;
-  const cat = args?.category as Category | undefined;
-  return cat && CATEGORIES.includes(cat) ? cat : "Operations";
+  const args = call?.function?.arguments ? JSON.parse(call.function.arguments) : {};
+  return {
+    category: CATEGORIES.includes(args.category) ? args.category : "Operations",
+    resolution: args.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
+    reason: typeof args.reason === "string" ? args.reason : "Triage decision recorded.",
+    priority: ["low", "medium", "high", "critical"].includes(args.priority) ? args.priority : "medium",
+  };
 }
 
-async function generateReply(history: { role: string; message: string }[], category: Category): Promise<string> {
+async function generateSelfServiceSteps(message: string, category: Category): Promise<string> {
+  const json = await callAI({
+    model: "google/gemini-2.5-flash",
+    messages: [
+      {
+        role: "system",
+        content: `You are a ${category} help-desk assistant. ${TONE_PROMPTS[category]} Respond with concise, numbered, step-by-step instructions the user can follow themselves. Keep it under 8 short steps. No preamble, no sign-off.`,
+      },
+      { role: "user", content: message },
+    ],
+  });
+  return (json.choices?.[0]?.message?.content ?? "Please try the standard steps for this request.").trim();
+}
+
+async function generateFollowUp(history: { role: string; message: string }[], category: Category): Promise<string> {
   const messages = [
     {
       role: "system",
-      content: `You are a help-desk agent for the ${category} department. ${TONE_PROMPTS[category]} Write a concise 3-5 sentence reply. Acknowledge the user's request, reference specifics, and offer a concrete next step. No preamble.`,
+      content: `You are a ${category} help-desk agent. ${TONE_PROMPTS[category]} Reply in 3-5 sentences. Reference specifics from the user's message and offer a concrete next step.`,
     },
     ...history.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.message })),
   ];
@@ -72,16 +107,38 @@ async function generateReply(history: { role: string; message: string }[], categ
 
 async function assertAdmin(userId: string) {
   const { data, error } = await supabaseAdmin
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .maybeSingle();
+    .from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) throw new Error("Forbidden: admin role required");
 }
 
-// ---------- PUBLIC (no auth) ----------
+const RESPONSE_TIME: Record<Category, string> = {
+  IT: "within 2 hours",
+  HR: "within 24 hours",
+  Finance: "within 48 hours",
+  Operations: "within 4 hours",
+};
+
+async function pickAgent(category: Category): Promise<{ id: string; full_name: string } | null> {
+  // Prefer available agents in this department with lowest workload
+  const { data: avail } = await supabaseAdmin
+    .from("agents" as never)
+    .select("id, full_name, status, current_ticket_count")
+    .eq("department", category)
+    .order("current_ticket_count", { ascending: true }) as unknown as { data: Array<{ id: string; full_name: string; status: string; current_ticket_count: number }> | null };
+  if (!avail || avail.length === 0) return null;
+  const available = avail.filter((a) => a.status === "available");
+  const chosen = (available[0] ?? avail[0]);
+  return { id: chosen.id, full_name: chosen.full_name };
+}
+
+async function bumpAgentWorkload(agentId: string, delta: number) {
+  const { data } = await supabaseAdmin.from("agents" as never).select("current_ticket_count").eq("id", agentId).maybeSingle() as unknown as { data: { current_ticket_count: number } | null };
+  if (!data) return;
+  await supabaseAdmin.from("agents" as never).update({ current_ticket_count: Math.max(0, data.current_ticket_count + delta) } as never).eq("id", agentId);
+}
+
+// ---------- PUBLIC ----------
 
 export const startConversation = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
@@ -94,82 +151,146 @@ export const startConversation = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     const { data: user, error: ue } = await supabaseAdmin
-      .from("app_users")
-      .insert({ name: data.name, email: data.email, department: data.department })
-      .select()
-      .single();
+      .from("app_users").insert({ name: data.name, email: data.email, department: data.department })
+      .select().single();
     if (ue) throw new Error(ue.message);
 
-    const category = await classify(data.message);
-    const reply = await generateReply([{ role: "user", message: data.message }], category);
+    const triage = await classifyAndDecide(data.message);
+    let assistantText = "";
+    let assignedAgent: { id: string; full_name: string } | null = null;
+    let status: typeof STATUSES[number] = "open";
 
+    if (triage.resolution === "self_service") {
+      const steps = await generateSelfServiceSteps(data.message, triage.category);
+      assistantText = `${steps}\n\nDoes this resolve your issue?`;
+    } else {
+      assignedAgent = await pickAgent(triage.category);
+      status = "escalated";
+      const eta = RESPONSE_TIME[triage.category];
+      if (assignedAgent) {
+        assistantText =
+`Your request requires hands-on assistance from our ${triage.category} team. Your ticket has been assigned to **${assignedAgent.full_name}** and they will contact you shortly.
+
+🏢 Department: ${triage.category}
+👤 Assigned to: ${assignedAgent.full_name}
+⏱️ Expected response: ${eta}
+
+You will be notified as soon as your ticket is picked up.`;
+      } else {
+        assistantText =
+`Your request needs hands-on assistance from our ${triage.category} team. Our team is currently at capacity — you are in the queue and will be attended to shortly. Expected response: ${eta}.`;
+      }
+    }
+
+    const ticketInsert: Record<string, unknown> = {
+      user_id: user.id,
+      message: data.message,
+      category: triage.category,
+      ai_response: assistantText,
+      status,
+      resolution_type: triage.resolution,
+      escalation_reason: triage.reason,
+      priority: triage.priority,
+      assigned_agent_id: assignedAgent?.id ?? null,
+    };
     const { data: ticket, error: te } = await supabaseAdmin
-      .from("tickets")
-      .insert({ user_id: user.id, message: data.message, category, ai_response: reply })
-      .select()
-      .single();
+      .from("tickets").insert(ticketInsert as never).select().single();
     if (te) throw new Error(te.message);
 
+    if (assignedAgent) await bumpAgentWorkload(assignedAgent.id, +1);
+
     const { data: msgs, error: me } = await supabaseAdmin
-      .from("conversations")
-      .insert([
+      .from("conversations").insert([
         { ticket_id: ticket.id, role: "user", message: data.message },
-        { ticket_id: ticket.id, role: "assistant", message: reply },
-      ])
-      .select();
+        { ticket_id: ticket.id, role: "assistant", message: assistantText },
+      ]).select();
     if (me) throw new Error(me.message);
 
-    return { ticket, user, messages: msgs ?? [] };
+    return {
+      ticket,
+      user,
+      messages: msgs ?? [],
+      assignedAgentName: assignedAgent?.full_name ?? null,
+      expectedResponse: triage.resolution === "escalated" ? RESPONSE_TIME[triage.category] : null,
+    };
   });
 
 export const continueConversation = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({
-      ticketId: z.string().uuid(),
-      message: z.string().trim().min(1).max(2000),
-    }).parse(input),
+    z.object({ ticketId: z.string().uuid(), message: z.string().trim().min(1).max(2000) }).parse(input),
   )
   .handler(async ({ data }) => {
     const { data: ticket, error: te } = await supabaseAdmin
-      .from("tickets")
-      .select("id, category")
-      .eq("id", data.ticketId)
-      .single();
+      .from("tickets").select("id, category, status").eq("id", data.ticketId).single();
     if (te || !ticket) throw new Error(te?.message ?? "Ticket not found");
 
     const { data: history } = await supabaseAdmin
-      .from("conversations")
-      .select("role, message")
-      .eq("ticket_id", ticket.id)
-      .order("created_at", { ascending: true });
+      .from("conversations").select("role, message").eq("ticket_id", ticket.id).order("created_at", { ascending: true });
 
     const fullHistory = [...(history ?? []), { role: "user", message: data.message }];
-    const reply = await generateReply(fullHistory, ticket.category as Category);
+    const reply = await generateFollowUp(fullHistory, ticket.category as Category);
 
     const { data: msgs, error: me } = await supabaseAdmin
-      .from("conversations")
-      .insert([
+      .from("conversations").insert([
         { ticket_id: ticket.id, role: "user", message: data.message },
         { ticket_id: ticket.id, role: "assistant", message: reply },
-      ])
-      .select();
+      ]).select();
     if (me) throw new Error(me.message);
-
     return { messages: msgs ?? [] };
+  });
+
+// User marks a self-service answer as resolved or not
+export const markUserResolution = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ ticketId: z.string().uuid(), resolved: z.boolean() }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const { data: ticket } = await supabaseAdmin
+      .from("tickets").select("*").eq("id", data.ticketId).single();
+    if (!ticket) throw new Error("Ticket not found");
+
+    if (data.resolved) {
+      await supabaseAdmin.from("tickets").update({
+        status: "resolved",
+        resolved_by_user: true,
+      } as never).eq("id", data.ticketId);
+      await supabaseAdmin.from("conversations").insert({
+        ticket_id: data.ticketId, role: "assistant",
+        message: "Glad we could help! Marking this ticket as resolved. 🎉",
+      });
+      return { escalated: false, assignedAgentName: null, expectedResponse: null };
+    }
+
+    // Escalate
+    const cat = ticket.category as Category;
+    const agent = await pickAgent(cat);
+    const eta = RESPONSE_TIME[cat];
+    const text = agent
+      ? `Got it — escalating this to our ${cat} team. Your ticket has been assigned to **${agent.full_name}** and they will contact you shortly.\n\n🏢 Department: ${cat}\n👤 Assigned to: ${agent.full_name}\n⏱️ Expected response: ${eta}`
+      : `Got it — escalating to our ${cat} team. They are currently at capacity, so you have been placed in the queue. Expected response: ${eta}.`;
+
+    await supabaseAdmin.from("tickets").update({
+      status: "escalated",
+      resolution_type: "escalated",
+      assigned_agent_id: agent?.id ?? null,
+      escalation_reason: "User indicated self-service answer did not resolve their issue.",
+    } as never).eq("id", data.ticketId);
+
+    if (agent) await bumpAgentWorkload(agent.id, +1);
+
+    await supabaseAdmin.from("conversations").insert({
+      ticket_id: data.ticketId, role: "assistant", message: text,
+    });
+
+    return { escalated: true, assignedAgentName: agent?.full_name ?? null, expectedResponse: eta };
   });
 
 export const rateTicket = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({
-      ticketId: z.string().uuid(),
-      rating: z.enum(["up", "down"]),
-    }).parse(input),
+    z.object({ ticketId: z.string().uuid(), rating: z.enum(["up", "down"]) }).parse(input),
   )
   .handler(async ({ data }) => {
-    const { error } = await supabaseAdmin
-      .from("tickets")
-      .update({ rating: data.rating })
-      .eq("id", data.ticketId);
+    const { error } = await supabaseAdmin.from("tickets").update({ rating: data.rating }).eq("id", data.ticketId);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
@@ -179,10 +300,7 @@ export const rateTicket = createServerFn({ method: "POST" })
 export const getMyRole = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
-    const { data } = await supabaseAdmin
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId);
+    const { data } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", context.userId);
     const roles = (data ?? []).map((r) => r.role);
     return { roles, isAdmin: roles.includes("admin") };
   });
@@ -193,24 +311,74 @@ export const adminListTickets = createServerFn({ method: "GET" })
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("tickets")
-      .select("*, app_users(name, email, department)")
+      .select("*, app_users(name, email, department), agents:assigned_agent_id(id, full_name, department, status)")
       .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return data ?? [];
   });
 
-export const adminGetConversation = createServerFn({ method: "POST" })
+export const adminListAgents = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await assertAdmin(context.userId);
+    const { data, error } = await supabaseAdmin.from("agents" as never).select("*").order("department");
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  });
+
+export const adminCreateAgent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ ticketId: z.string().uuid() }).parse(input),
+    z.object({
+      full_name: z.string().trim().min(1).max(120),
+      email: z.string().trim().email().max(255),
+      department: z.enum(CATEGORIES),
+      status: z.enum(AGENT_STATUSES).default("available"),
+    }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    const { data: row, error } = await supabaseAdmin.from("agents" as never).insert(data as never).select().single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+export const adminUpdateAgent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      id: z.string().uuid(),
+      full_name: z.string().trim().min(1).max(120).optional(),
+      email: z.string().trim().email().max(255).optional(),
+      department: z.enum(CATEGORIES).optional(),
+      status: z.enum(AGENT_STATUSES).optional(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { id, ...patch } = data;
+    const { data: row, error } = await supabaseAdmin.from("agents" as never).update(patch as never).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    return row;
+  });
+
+export const adminDeleteAgent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { error } = await supabaseAdmin.from("agents" as never).delete().eq("id", data.id);
+    if (error) throw new Error(error.message);
+    return { ok: true };
+  });
+
+export const adminGetConversation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ ticketId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
     const { data: rows, error } = await supabaseAdmin
-      .from("conversations")
-      .select("*")
-      .eq("ticket_id", data.ticketId)
-      .order("created_at", { ascending: true });
+      .from("conversations").select("*").eq("ticket_id", data.ticketId).order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     return rows ?? [];
   });
@@ -223,17 +391,29 @@ export const adminUpdateTicket = createServerFn({ method: "POST" })
       status: z.enum(STATUSES).optional(),
       ai_response: z.string().trim().max(5000).optional(),
       admin_notes: z.string().trim().max(5000).nullable().optional(),
+      assigned_agent_id: z.string().uuid().nullable().optional(),
+      resolution_type: z.enum(RESOLUTION_TYPES).optional(),
+      priority: z.enum(PRIORITIES).optional(),
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
     const { id, ...patch } = data;
-    const { data: row, error } = await supabaseAdmin
-      .from("tickets")
-      .update(patch)
-      .eq("id", id)
-      .select()
-      .single();
+    // If reassigning, adjust workload counts
+    if ("assigned_agent_id" in patch) {
+      const { data: prev } = await supabaseAdmin.from("tickets").select("assigned_agent_id, status").eq("id", id).maybeSingle();
+      const oldAgent = (prev as { assigned_agent_id: string | null } | null)?.assigned_agent_id ?? null;
+      const newAgent = patch.assigned_agent_id ?? null;
+      if (oldAgent && oldAgent !== newAgent) await bumpAgentWorkload(oldAgent, -1);
+      if (newAgent && newAgent !== oldAgent) await bumpAgentWorkload(newAgent, +1);
+    }
+    // If marking resolved, decrement workload from current agent
+    if (patch.status === "resolved") {
+      const { data: prev } = await supabaseAdmin.from("tickets").select("assigned_agent_id, status").eq("id", id).maybeSingle();
+      const p = prev as { assigned_agent_id: string | null; status: string } | null;
+      if (p?.assigned_agent_id && p.status !== "resolved") await bumpAgentWorkload(p.assigned_agent_id, -1);
+    }
+    const { data: row, error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", id).select().single();
     if (error) throw new Error(error.message);
     return row;
   });
@@ -243,8 +423,10 @@ export const adminDeleteTicket = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) => z.object({ id: z.string().uuid() }).parse(input))
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
+    const { data: t } = await supabaseAdmin.from("tickets").select("assigned_agent_id, status").eq("id", data.id).maybeSingle();
+    const tt = t as { assigned_agent_id: string | null; status: string } | null;
+    if (tt?.assigned_agent_id && tt.status !== "resolved") await bumpAgentWorkload(tt.assigned_agent_id, -1);
     const { error } = await supabaseAdmin.from("tickets").delete().eq("id", data.id);
     if (error) throw new Error(error.message);
     return { ok: true };
   });
-

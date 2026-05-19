@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      agents: {
+        Row: {
+          created_at: string
+          current_ticket_count: number
+          department: string
+          email: string
+          full_name: string
+          id: string
+          status: Database["public"]["Enums"]["agent_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          current_ticket_count?: number
+          department: string
+          email: string
+          full_name: string
+          id?: string
+          status?: Database["public"]["Enums"]["agent_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          current_ticket_count?: number
+          department?: string
+          email?: string
+          full_name?: string
+          id?: string
+          status?: Database["public"]["Enums"]["agent_status"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       app_users: {
         Row: {
           created_at: string
@@ -74,11 +107,17 @@ export type Database = {
         Row: {
           admin_notes: string | null
           ai_response: string | null
+          assigned_agent_id: string | null
           category: Database["public"]["Enums"]["ticket_category"]
+          classification_method: string
           created_at: string
+          escalation_reason: string | null
           id: string
           message: string
+          priority: Database["public"]["Enums"]["ticket_priority"]
           rating: Database["public"]["Enums"]["ticket_rating"] | null
+          resolution_type: Database["public"]["Enums"]["resolution_type"]
+          resolved_by_user: boolean
           status: Database["public"]["Enums"]["ticket_status"]
           updated_at: string
           user_id: string
@@ -86,11 +125,17 @@ export type Database = {
         Insert: {
           admin_notes?: string | null
           ai_response?: string | null
+          assigned_agent_id?: string | null
           category: Database["public"]["Enums"]["ticket_category"]
+          classification_method?: string
           created_at?: string
+          escalation_reason?: string | null
           id?: string
           message: string
+          priority?: Database["public"]["Enums"]["ticket_priority"]
           rating?: Database["public"]["Enums"]["ticket_rating"] | null
+          resolution_type?: Database["public"]["Enums"]["resolution_type"]
+          resolved_by_user?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
           updated_at?: string
           user_id: string
@@ -98,16 +143,29 @@ export type Database = {
         Update: {
           admin_notes?: string | null
           ai_response?: string | null
+          assigned_agent_id?: string | null
           category?: Database["public"]["Enums"]["ticket_category"]
+          classification_method?: string
           created_at?: string
+          escalation_reason?: string | null
           id?: string
           message?: string
+          priority?: Database["public"]["Enums"]["ticket_priority"]
           rating?: Database["public"]["Enums"]["ticket_rating"] | null
+          resolution_type?: Database["public"]["Enums"]["resolution_type"]
+          resolved_by_user?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
           updated_at?: string
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "tickets_assigned_agent_id_fkey"
+            columns: ["assigned_agent_id"]
+            isOneToOne: false
+            referencedRelation: "agents"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "tickets_user_id_fkey"
             columns: ["user_id"]
@@ -152,10 +210,13 @@ export type Database = {
       }
     }
     Enums: {
+      agent_status: "available" | "busy" | "offline"
       app_role: "admin" | "user"
+      resolution_type: "self_service" | "escalated" | "pending"
       ticket_category: "HR" | "IT" | "Finance" | "Operations"
+      ticket_priority: "low" | "medium" | "high" | "critical"
       ticket_rating: "up" | "down"
-      ticket_status: "open" | "in_progress" | "resolved"
+      ticket_status: "open" | "in_progress" | "resolved" | "escalated"
       ticket_tone: "formal" | "friendly" | "urgent"
     }
     CompositeTypes: {
@@ -284,10 +345,13 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      agent_status: ["available", "busy", "offline"],
       app_role: ["admin", "user"],
+      resolution_type: ["self_service", "escalated", "pending"],
       ticket_category: ["HR", "IT", "Finance", "Operations"],
+      ticket_priority: ["low", "medium", "high", "critical"],
       ticket_rating: ["up", "down"],
-      ticket_status: ["open", "in_progress", "resolved"],
+      ticket_status: ["open", "in_progress", "resolved", "escalated"],
       ticket_tone: ["formal", "friendly", "urgent"],
     },
   },
