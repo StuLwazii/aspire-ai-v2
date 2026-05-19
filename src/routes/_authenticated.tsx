@@ -1,5 +1,7 @@
 import { createFileRoute, redirect, Outlet, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { getMyRole } from "@/lib/tickets.functions";
 import { LayoutDashboard, Ticket, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -13,15 +15,39 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthLayout,
 });
 
+function useIsAdmin() {
+  const [state, setState] = useState<"loading" | "ok" | "denied">("loading");
+  useEffect(() => {
+    getMyRole().then((r) => setState(r.isAdmin ? "ok" : "denied")).catch(() => setState("denied"));
+  }, []);
+  return state;
+}
+
 function AuthLayout() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const adminState = useIsAdmin();
 
   const logout = async () => {
     await supabase.auth.signOut();
     toast.success("Signed out");
     navigate({ to: "/login" });
   };
+
+  if (adminState === "loading") {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Checking permissions…</div>;
+  }
+  if (adminState === "denied") {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6">
+        <div className="max-w-md text-center space-y-4">
+          <h1 className="text-xl font-semibold">Admin access required</h1>
+          <p className="text-sm text-muted-foreground">Your account isn't assigned the admin role. Ask an admin to grant access.</p>
+          <Button onClick={logout} variant="outline">Sign out</Button>
+        </div>
+      </div>
+    );
+  }
 
   const navItem = (to: string, label: string, Icon: typeof Ticket) => {
     const active = pathname === to || (to !== "/dashboard" && pathname.startsWith(to));
