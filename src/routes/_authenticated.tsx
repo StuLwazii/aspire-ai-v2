@@ -10,7 +10,7 @@ export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
     if (typeof window === "undefined") return;
     const { data } = await supabase.auth.getUser();
-    if (!data.user) throw redirect({ to: "/login" });
+    if (!data.user) throw redirect({ to: "/admin/login" });
   },
   component: AuthLayout,
 });
@@ -31,7 +31,7 @@ function AuthLayout() {
   const logout = async () => {
     await supabase.auth.signOut();
     toast.success("Signed out");
-    navigate({ to: "/login" });
+    navigate({ to: "/admin/login" });
   };
 
   if (adminState === "loading") {
