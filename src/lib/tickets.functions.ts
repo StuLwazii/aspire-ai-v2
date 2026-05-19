@@ -2,10 +2,10 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
 const STATUSES = ["open", "in_progress", "resolved"] as const;
-const DEPARTMENTS = ["Engineering", "Sales", "Marketing", "HR", "Finance", "Operations", "Other"] as const;
 
 type Category = (typeof CATEGORIES)[number];
 
@@ -88,7 +88,7 @@ export const startConversation = createServerFn({ method: "POST" })
     z.object({
       name: z.string().trim().min(1).max(120),
       email: z.string().trim().email().max(255),
-      department: z.enum(DEPARTMENTS),
+      department: z.enum(DEPARTMENT_OPTIONS),
       message: z.string().trim().min(5).max(2000),
     }).parse(input),
   )
@@ -248,4 +248,3 @@ export const adminDeleteTicket = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
-export const DEPARTMENT_OPTIONS = DEPARTMENTS;
