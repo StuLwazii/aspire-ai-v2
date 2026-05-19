@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import type { Database } from "@/integrations/supabase/types";
 import { BarChart, Bar, ResponsiveContainer, XAxis, Tooltip, Cell } from "recharts";
+import { ClientOnly } from "@tanstack/react-router";
 
 type Ticket = Database["public"]["Tables"]["tickets"]["Row"];
 const CATS = ["IT", "Finance", "HR", "Operations"] as const;
@@ -31,15 +32,17 @@ export function AnalyticsCards({ tickets }: { tickets: Ticket[] }) {
       <Card className="p-4 col-span-2 md:col-span-4 lg:col-span-1">
         <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">By category</div>
         <div className="h-16">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
-              <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ fontSize: 12, padding: "4px 8px" }} />
-              <Bar dataKey="count" radius={[4, 4, 0, 0]}>
-                {data.map((d) => <Cell key={d.name} fill={COLORS[d.name]} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <ClientOnly fallback={null}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip cursor={{ fill: "transparent" }} contentStyle={{ fontSize: 12, padding: "4px 8px" }} />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  {data.map((d) => <Cell key={d.name} fill={COLORS[d.name]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </ClientOnly>
         </div>
       </Card>
     </div>
