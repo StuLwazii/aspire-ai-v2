@@ -14,38 +14,126 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_users: {
+        Row: {
+          created_at: string
+          department: string
+          email: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          department: string
+          email: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          department?: string
+          email?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
+      conversations: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          role: string
+          ticket_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          role: string
+          ticket_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          role?: string
+          ticket_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tickets: {
         Row: {
+          admin_notes: string | null
           ai_response: string | null
           category: Database["public"]["Enums"]["ticket_category"]
           created_at: string
           id: string
           message: string
+          rating: Database["public"]["Enums"]["ticket_rating"] | null
           status: Database["public"]["Enums"]["ticket_status"]
-          tone: Database["public"]["Enums"]["ticket_tone"]
           updated_at: string
           user_id: string
         }
         Insert: {
+          admin_notes?: string | null
           ai_response?: string | null
           category: Database["public"]["Enums"]["ticket_category"]
           created_at?: string
           id?: string
           message: string
+          rating?: Database["public"]["Enums"]["ticket_rating"] | null
           status?: Database["public"]["Enums"]["ticket_status"]
-          tone?: Database["public"]["Enums"]["ticket_tone"]
           updated_at?: string
           user_id: string
         }
         Update: {
+          admin_notes?: string | null
           ai_response?: string | null
           category?: Database["public"]["Enums"]["ticket_category"]
           created_at?: string
           id?: string
           message?: string
+          rating?: Database["public"]["Enums"]["ticket_rating"] | null
           status?: Database["public"]["Enums"]["ticket_status"]
-          tone?: Database["public"]["Enums"]["ticket_tone"]
           updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tickets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
           user_id?: string
         }
         Relationships: []
@@ -55,10 +143,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
+      app_role: "admin" | "user"
       ticket_category: "HR" | "IT" | "Finance" | "Operations"
+      ticket_rating: "up" | "down"
       ticket_status: "open" | "in_progress" | "resolved"
       ticket_tone: "formal" | "friendly" | "urgent"
     }
@@ -188,7 +284,9 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      app_role: ["admin", "user"],
       ticket_category: ["HR", "IT", "Finance", "Operations"],
+      ticket_rating: ["up", "down"],
       ticket_status: ["open", "in_progress", "resolved"],
       ticket_tone: ["formal", "friendly", "urgent"],
     },
