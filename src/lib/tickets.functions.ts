@@ -135,7 +135,7 @@ async function pickAgent(category: Category): Promise<{ id: string; full_name: s
 async function bumpAgentWorkload(agentId: string, delta: number) {
   const { data } = await supabaseAdmin.from("agents" as never).select("current_ticket_count").eq("id", agentId).maybeSingle() as unknown as { data: { current_ticket_count: number } | null };
   if (!data) return;
-  await supabaseAdmin.from("agents" as never).update({ current_ticket_count: Math.max(0, data.current_ticket_count + delta) }).eq("id", agentId);
+  await supabaseAdmin.from("agents" as never).update({ current_ticket_count: Math.max(0, data.current_ticket_count + delta) } as never).eq("id", agentId);
 }
 
 // ---------- PUBLIC ----------
