@@ -14,7 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      tickets: {
+        Row: {
+          ai_response: string | null
+          category: Database["public"]["Enums"]["ticket_category"]
+          created_at: string
+          id: string
+          message: string
+          status: Database["public"]["Enums"]["ticket_status"]
+          tone: Database["public"]["Enums"]["ticket_tone"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ai_response?: string | null
+          category: Database["public"]["Enums"]["ticket_category"]
+          created_at?: string
+          id?: string
+          message: string
+          status?: Database["public"]["Enums"]["ticket_status"]
+          tone?: Database["public"]["Enums"]["ticket_tone"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ai_response?: string | null
+          category?: Database["public"]["Enums"]["ticket_category"]
+          created_at?: string
+          id?: string
+          message?: string
+          status?: Database["public"]["Enums"]["ticket_status"]
+          tone?: Database["public"]["Enums"]["ticket_tone"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +58,9 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      ticket_category: "HR" | "IT" | "Finance" | "Operations"
+      ticket_status: "open" | "in_progress" | "resolved"
+      ticket_tone: "formal" | "friendly" | "urgent"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +187,10 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      ticket_category: ["HR", "IT", "Finance", "Operations"],
+      ticket_status: ["open", "in_progress", "resolved"],
+      ticket_tone: ["formal", "friendly", "urgent"],
+    },
   },
 } as const
