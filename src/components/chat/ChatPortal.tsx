@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { startConversation, continueConversation, rateTicket } from "@/lib/tickets.functions";
+import { startConversation, continueConversation, rateTicket, markUserResolution } from "@/lib/tickets.functions";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,15 +10,18 @@ import { ChatBubble, TypingIndicator } from "./ChatBubble";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 import type { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
-import { Send, ThumbsUp, ThumbsDown, Ticket as TicketIcon, MessageCircle } from "lucide-react";
+import { Send, ThumbsUp, ThumbsDown, Ticket as TicketIcon, MessageCircle, Bot, User as UserIcon, CheckCircle2, XCircle } from "lucide-react";
 
-type Ticket = Database["public"]["Tables"]["tickets"]["Row"];
+type Ticket = Database["public"]["Tables"]["tickets"]["Row"] & {
+  resolution_type?: "self_service" | "escalated" | "pending";
+};
 type Msg = Database["public"]["Tables"]["conversations"]["Row"];
 
 export function ChatPortal() {
   const start = useServerFn(startConversation);
   const cont = useServerFn(continueConversation);
   const rate = useServerFn(rateTicket);
+  const mark = useServerFn(markUserResolution);
 
   const [stage, setStage] = useState<"form" | "chat">("form");
   const [name, setName] = useState("");
@@ -30,6 +33,7 @@ export function ChatPortal() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [rating, setRating] = useState<"up" | "down" | null>(null);
+  const [resolutionChoice, setResolutionChoice] = useState<"resolved" | "escalated" | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,9 +49,11 @@ export function ChatPortal() {
     setBusy(true);
     try {
       const res = await start({ data: { name, email, department, message: first.trim() } });
-      setTicket(res.ticket as Ticket);
+      const t = res.ticket as Ticket;
+      setTicket(t);
       setMessages(res.messages as Msg[]);
-      setRating((res.ticket as Ticket).rating);
+      setRating(t.rating);
+      if (t.resolution_type === "escalated") setResolutionChoice("escalated");
       setStage("chat");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit");
@@ -61,12 +67,10 @@ export function ChatPortal() {
     if (!ticket || input.trim().length === 0) return;
     const text = input.trim();
     setInput("");
-    // optimistic user bubble
     setMessages((m) => [...m, { id: `tmp-${Date.now()}`, ticket_id: ticket.id, role: "user", message: text, created_at: new Date().toISOString() }]);
     setBusy(true);
     try {
       const res = await cont({ data: { ticketId: ticket.id, message: text } });
-      // replace optimistic with server rows
       setMessages((prev) => {
         const withoutTmp = prev.filter((m) => !m.id.startsWith("tmp-"));
         return [...withoutTmp, ...(res.messages as Msg[])];
@@ -88,6 +92,38 @@ export function ChatPortal() {
     } catch {
       setRating(null);
       toast.error("Couldn't save rating");
+    }
+  };
+
+  const handleResolution = async (resolved: boolean) => {
+    if (!ticket) return;
+    setBusy(true);
+    try {
+      const res = await mark({ data: { ticketId: ticket.id, resolved } });
+      setResolutionChoice(resolved ? "resolved" : "escalated");
+      if (resolved) {
+        setMessages((prev) => [...prev, {
+          id: `ack-${Date.now()}`, ticket_id: ticket.id, role: "assistant",
+          message: "Glad we could help! Marking this ticket as resolved. 🎉",
+          created_at: new Date().toISOString(),
+        }]);
+        setTicket({ ...ticket, status: "resolved" });
+        toast.success("Marked as resolved");
+      } else {
+        const agentLine = res.assignedAgentName
+          ? `Got it — escalating to our team. Your ticket has been assigned to **${res.assignedAgentName}** and they will contact you shortly. Expected response: ${res.expectedResponse}.`
+          : `Got it — escalating to our team. They are at capacity; you are in the queue. Expected response: ${res.expectedResponse}.`;
+        setMessages((prev) => [...prev, {
+          id: `esc-${Date.now()}`, ticket_id: ticket.id, role: "assistant",
+          message: agentLine, created_at: new Date().toISOString(),
+        }]);
+        setTicket({ ...ticket, status: "escalated", resolution_type: "escalated" });
+        toast.success("Escalated to a human agent");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -137,6 +173,15 @@ export function ChatPortal() {
     );
   }
 
+  const resolutionBadge = ticket?.resolution_type === "self_service" && resolutionChoice !== "escalated"
+    ? { icon: Bot, label: "Resolved by Assistant", cls: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400" }
+    : ticket?.resolution_type === "escalated" || resolutionChoice === "escalated"
+    ? { icon: UserIcon, label: "Escalated to Human Agent", cls: "bg-destructive/15 text-destructive" }
+    : null;
+
+  // Show Yes/No on the LAST assistant message if self-service & not yet answered
+  const isSelfServicePending = ticket?.resolution_type === "self_service" && resolutionChoice === null;
+
   return (
     <Card className="w-full max-w-2xl h-[calc(100vh-2rem)] sm:h-[80vh] flex flex-col overflow-hidden">
       <header className="px-4 py-3 border-b flex items-center gap-3">
@@ -154,6 +199,12 @@ export function ChatPortal() {
             </div>
           )}
         </div>
+        {resolutionBadge && (
+          <span className={`inline-flex items-center gap-1 text-[10px] uppercase tracking-wide font-semibold px-2 py-1 rounded-full ${resolutionBadge.cls}`}>
+            <resolutionBadge.icon className="h-3 w-3" />
+            {resolutionBadge.label}
+          </span>
+        )}
       </header>
 
       <div ref={scroller} className="flex-1 overflow-y-auto p-4 space-y-4 bg-secondary/30">
@@ -180,6 +231,22 @@ export function ChatPortal() {
           );
         })}
         {busy && <TypingIndicator />}
+
+        {isSelfServicePending && !busy && (
+          <div className="flex justify-start">
+            <div className="flex flex-col gap-2 ml-1">
+              <span className="text-xs text-muted-foreground">Did this resolve your issue?</span>
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => handleResolution(true)} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                  <CheckCircle2 className="h-4 w-4 mr-1.5" />Yes, resolved
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => handleResolution(false)}>
+                  <XCircle className="h-4 w-4 mr-1.5" />No, I still need help
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <form onSubmit={onSend} className="p-3 border-t flex gap-2">
