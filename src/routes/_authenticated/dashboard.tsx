@@ -1,10 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { adminListTickets } from "@/lib/tickets.functions";
+import { adminListTickets, adminListAgents } from "@/lib/tickets.functions";
 import { AnalyticsOverview } from "@/components/admin/AnalyticsOverview";
+import { AgentWorkload } from "@/components/admin/AgentWorkload";
 import { useRealtimeTickets } from "@/hooks/useRealtimeTickets";
-import type { AdminTicket } from "@/components/admin/types";
+import type { AdminTicket, Agent } from "@/components/admin/types";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
@@ -13,11 +14,16 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 
 function DashboardPage() {
   const fetchTickets = useServerFn(adminListTickets);
+  const fetchAgents = useServerFn(adminListAgents);
   const { data: tickets = [], refetch } = useQuery({
     queryKey: ["admin-tickets"],
     queryFn: () => fetchTickets() as Promise<AdminTicket[]>,
   });
-  useRealtimeTickets(() => refetch());
+  const { data: agents = [], refetch: refetchAgents } = useQuery({
+    queryKey: ["agents"],
+    queryFn: () => fetchAgents() as Promise<Agent[]>,
+  });
+  useRealtimeTickets(() => { refetch(); refetchAgents(); });
 
   return (
     <div className="p-6 md:p-8 space-y-6 max-w-7xl mx-auto">
@@ -25,7 +31,10 @@ function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground mt-1">Live overview of all incoming tickets.</p>
       </header>
-      <AnalyticsOverview tickets={tickets} />
+      <div className="grid lg:grid-cols-[1fr_280px] gap-4">
+        <AnalyticsOverview tickets={tickets} />
+        <AgentWorkload agents={agents} />
+      </div>
     </div>
   );
 }
