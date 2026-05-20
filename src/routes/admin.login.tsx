@@ -10,7 +10,7 @@ import { ShieldCheck } from "lucide-react";
 
 export const Route = createFileRoute("/admin/login")({
   component: AdminLoginPage,
-  head: () => ({ meta: [{ title: "Admin sign in — Helix Help Desk" }] }),
+  head: () => ({ meta: [{ title: "Admin sign in — Aspire AI" }] }),
 });
 
 function AdminLoginPage() {
@@ -58,7 +58,7 @@ function AdminLoginPage() {
           </div>
           <div>
             <h1 className="text-xl font-bold">Admin Portal</h1>
-            <p className="text-xs text-muted-foreground">Helix Help Desk — staff access only</p>
+            <p className="text-xs text-muted-foreground">Aspire AI — staff access only</p>
           </div>
         </div>
 

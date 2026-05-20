@@ -116,7 +116,7 @@ function AuthLayout() {
               <Ticket className="h-5 w-5 text-sidebar-primary-foreground" />
             </div>
             <div>
-              <div className="font-bold text-sm">Helix</div>
+              <div className="font-bold text-sm">Aspire AI</div>
               <div className="text-[11px] text-sidebar-foreground/60">
                 {isAdmin ? "Admin" : "Agent"} portal
               </div>
@@ -150,7 +150,7 @@ function AuthLayout() {
             <div className="h-8 w-8 rounded-md bg-primary flex items-center justify-center">
               <Ticket className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="font-bold">Helix</span>
+            <span className="font-bold">Aspire AI</span>
           </div>
           <div className="flex gap-1">
             <Button size="sm" variant="ghost" onClick={toggle}>

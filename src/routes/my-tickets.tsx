@@ -13,7 +13,7 @@ export const Route = createFileRoute("/my-tickets")({
   component: MyTicketsPage,
   head: () => ({
     meta: [
-      { title: "Track my tickets — Helix Help Desk" },
+      { title: "Track my tickets — Aspire AI" },
       { name: "description", content: "Check the status of tickets you logged and read messages from our agents." },
     ],
   }),

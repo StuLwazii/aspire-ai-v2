@@ -6,7 +6,7 @@ export const Route = createFileRoute("/")({
   component: LandingPage,
   head: () => ({
     meta: [
-      { title: "Helix Help Desk — Log a ticket" },
+      { title: "Aspire AI — Log a ticket" },
       { name: "description", content: "Get instant AI answers to IT, HR, Finance and Operations tickets, or escalate to a human." },
     ],
   }),
@@ -21,7 +21,7 @@ function LandingPage() {
             <TicketIcon className="h-5 w-5 text-primary-foreground" />
           </div>
           <div>
-            <div className="font-bold">Helix</div>
+            <div className="font-bold">Aspire AI</div>
             <div className="text-[11px] text-muted-foreground -mt-0.5">AI Help Desk</div>
           </div>
         </div>

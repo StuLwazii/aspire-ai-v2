@@ -20,7 +20,7 @@ import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 export const Route = createFileRoute("/_authenticated/my-queue")({
   component: MyQueuePage,
-  head: () => ({ meta: [{ title: "My queue — Helix" }] }),
+  head: () => ({ meta: [{ title: "My queue — Aspire AI" }] }),
 });
 
 type Msg = { id: string; ticket_id: string; role: string; message: string; created_at: string };

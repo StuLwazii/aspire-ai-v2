@@ -17,7 +17,7 @@ const STATUSES = ["available", "busy", "offline"] as const;
 
 export const Route = createFileRoute("/_authenticated/agents")({
   component: AgentsPage,
-  head: () => ({ meta: [{ title: "Agents — Helix" }] }),
+  head: () => ({ meta: [{ title: "Agents — Aspire AI" }] }),
 });
 
 function AgentsPage() {

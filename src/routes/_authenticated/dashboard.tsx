@@ -13,7 +13,7 @@ import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
-  head: () => ({ meta: [{ title: "Admin Dashboard — Helix" }] }),
+  head: () => ({ meta: [{ title: "Admin Dashboard — Aspire AI" }] }),
 });
 
 function DashboardPage() {
