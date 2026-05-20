@@ -6,6 +6,7 @@ import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck, Inbox, Moon, Sun }
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useTheme } from "@/components/theme-provider";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
@@ -23,8 +24,15 @@ type RoleState =
 
 function useMyRole(): RoleState {
   const [state, setState] = useState<RoleState>({ kind: "loading" });
+  const sessionStatus = useSupabaseSessionStatus();
   const navigate = useNavigate();
   useEffect(() => {
+    if (sessionStatus === "loading") return;
+    if (sessionStatus === "signed-out") {
+      navigate({ to: "/admin/login" });
+      return;
+    }
+
     getMyRole()
       .then((r) => {
         if (!r.isAdmin && !r.isAgent) setState({ kind: "denied" });
@@ -39,7 +47,7 @@ function useMyRole(): RoleState {
         }
         setState({ kind: "denied" });
       });
-  }, [navigate]);
+  }, [navigate, sessionStatus]);
   return state;
 }
 
