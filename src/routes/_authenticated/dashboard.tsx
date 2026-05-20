@@ -18,13 +18,16 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function DashboardPage() {
   const fetchTickets = useServerFn(adminListTickets);
   const fetchAgents = useServerFn(adminListAgents);
+  const isBrowser = typeof window !== "undefined";
   const { data: tickets = [], refetch } = useQuery({
     queryKey: ["admin-tickets"],
     queryFn: () => fetchTickets() as Promise<AdminTicket[]>,
+    enabled: isBrowser,
   });
   const { data: agents = [], refetch: refetchAgents } = useQuery({
     queryKey: ["agents"],
     queryFn: () => fetchAgents() as Promise<Agent[]>,
+    enabled: isBrowser,
   });
   useRealtimeTickets(() => { refetch(); refetchAgents(); });
 

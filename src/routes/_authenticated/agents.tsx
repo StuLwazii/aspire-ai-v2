@@ -27,6 +27,7 @@ function AgentsPage() {
 
   const { data: agents = [], refetch, isLoading } = useQuery({
     queryKey: ["agents"], queryFn: () => list() as Promise<Agent[]>,
+    enabled: typeof window !== "undefined",
   });
 
   const [name, setName] = useState("");
