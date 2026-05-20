@@ -377,9 +377,10 @@ export const rateTicket = createServerFn({ method: "POST" })
 
 export const userListTicketsByEmail = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ email: z.string().trim().email().max(255) }).parse(input),
+    z.object({ email: z.string().trim().email().max(255), accessCode: z.string().min(1).max(200) }).parse(input),
   )
   .handler(async ({ data }) => {
+    verifyAccessCode(data.accessCode);
     const email = data.email.toLowerCase();
     const { data: users } = await supabaseAdmin
       .from("app_users").select("id, name, email").ilike("email", email);
