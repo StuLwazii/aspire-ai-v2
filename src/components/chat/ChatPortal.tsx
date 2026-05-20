@@ -55,6 +55,9 @@ export function ChatPortal() {
       setMessages(res.messages as Msg[]);
       setRating(t.rating);
       if (t.resolution_type === "escalated") setResolutionChoice("escalated");
+      if (res.relatedTickets && res.relatedTickets.length > 1) {
+        toast.success(`Detected ${res.relatedTickets.length} issues — split across ${res.relatedTickets.map((r) => r.category).join(", ")}.`);
+      }
       setStage("chat");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to submit");
