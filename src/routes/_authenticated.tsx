@@ -1,4 +1,5 @@
 import { createFileRoute, redirect, Outlet, Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyRole } from "@/lib/tickets.functions";
@@ -25,6 +26,7 @@ type RoleState =
 function useMyRole(): RoleState {
   const [state, setState] = useState<RoleState>({ kind: "loading" });
   const sessionStatus = useSupabaseSessionStatus();
+  const getRole = useServerFn(getMyRole);
   const navigate = useNavigate();
   useEffect(() => {
     if (sessionStatus === "loading") return;
@@ -33,7 +35,7 @@ function useMyRole(): RoleState {
       return;
     }
 
-    getMyRole()
+    getRole()
       .then((r) => {
         if (!r.isAdmin && !r.isAgent) setState({ kind: "denied" });
         else setState({ kind: "ok", isAdmin: r.isAdmin, isAgent: r.isAgent });
@@ -47,7 +49,7 @@ function useMyRole(): RoleState {
         }
         setState({ kind: "denied" });
       });
-  }, [navigate, sessionStatus]);
+  }, [getRole, navigate, sessionStatus]);
   return state;
 }
 
