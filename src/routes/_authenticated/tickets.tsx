@@ -16,6 +16,7 @@ function TicketsPage() {
   const { data: tickets = [], refetch, isLoading } = useQuery({
     queryKey: ["admin-tickets"],
     queryFn: () => fetchTickets() as Promise<AdminTicket[]>,
+    enabled: typeof window !== "undefined",
   });
   useRealtimeTickets(() => refetch());
 
