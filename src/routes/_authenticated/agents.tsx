@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Trash2, Plus } from "lucide-react";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 const DEPTS = ["IT", "HR", "Finance", "Operations"] as const;
 const STATUSES = ["available", "busy", "offline"] as const;
@@ -24,10 +25,11 @@ function AgentsPage() {
   const create = useServerFn(adminCreateAgent);
   const update = useServerFn(adminUpdateAgent);
   const del = useServerFn(adminDeleteAgent);
+  const sessionStatus = useSupabaseSessionStatus();
 
   const { data: agents = [], refetch, isLoading } = useQuery({
     queryKey: ["agents"], queryFn: () => list() as Promise<Agent[]>,
-    enabled: typeof window !== "undefined",
+    enabled: sessionStatus === "authenticated",
   });
 
   const [name, setName] = useState("");
