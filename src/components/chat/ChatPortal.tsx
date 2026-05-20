@@ -67,7 +67,12 @@ export function ChatPortal() {
       }
       setStage("chat");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to submit");
+      const msg = err instanceof Error ? err.message : "Failed to submit";
+      if (msg.toLowerCase().includes("access code")) {
+        setAccessCodeError("Invalid access code. Please contact your administrator.");
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
