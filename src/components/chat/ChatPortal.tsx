@@ -45,13 +45,18 @@ export function ChatPortal() {
 
   const onStart = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAccessCodeError(null);
+    if (!accessCode.trim()) {
+      setAccessCodeError("Invalid access code. Please contact your administrator.");
+      return;
+    }
     if (first.trim().length < 5) {
       toast.error("Please describe your issue (5+ characters).");
       return;
     }
     setBusy(true);
     try {
-      const res = await start({ data: { name, email, department, message: first.trim() } });
+      const res = await start({ data: { name, email, department, message: first.trim(), accessCode: accessCode.trim() } });
       const t = res.ticket as Ticket;
       setTicket(t);
       setMessages(res.messages as Msg[]);
