@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { ShieldCheck, ShieldOff, UserCog } from "lucide-react";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 type Row = {
   id: string;
@@ -30,10 +31,11 @@ function UsersPage() {
   const list = useServerFn(adminListUsers);
   const setRole = useServerFn(adminSetUserRole);
   const promoteAgent = useServerFn(adminPromoteToAgent);
+  const sessionStatus = useSupabaseSessionStatus();
   const { data: users = [], refetch, isLoading } = useQuery({
     queryKey: ["admin-users"],
     queryFn: () => list() as Promise<Row[]>,
-    enabled: typeof window !== "undefined",
+    enabled: sessionStatus === "authenticated",
   });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [agentDeptFor, setAgentDeptFor] = useState<string | null>(null);
