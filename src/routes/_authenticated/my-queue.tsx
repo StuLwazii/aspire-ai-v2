@@ -46,6 +46,7 @@ function MyQueuePage() {
   const { data, refetch, isLoading } = useQuery({
     queryKey: ["agent-my-queue"],
     queryFn: () => listFn() as Promise<{ agent: { id: string; full_name: string; department: string }; tickets: AdminTicket[] }>,
+    enabled: typeof window !== "undefined",
   });
 
   useRealtimeTickets(() => refetch());
