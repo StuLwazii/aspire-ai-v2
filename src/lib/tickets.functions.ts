@@ -33,53 +33,85 @@ async function callAI(body: unknown) {
   return res.json();
 }
 
-async function classifyAndDecide(message: string): Promise<{
+type TriageItem = {
   category: Category;
   resolution: "self_service" | "escalated";
   reason: string;
   priority: "low" | "medium" | "high" | "critical";
   title: string;
-}> {
+  excerpt: string;
+};
+
+async function triageMultiple(message: string): Promise<TriageItem[]> {
   const json = await callAI({
     model: "google/gemini-2.5-flash",
     messages: [
       {
         role: "system",
         content:
-          "You triage help-desk tickets. (1) Classify into exactly one of: HR, IT, Finance, Operations. (2) Decide SELF_SERVICE (user can resolve themselves with clear steps) vs ESCALATED (requires a human to act). (3) Assign a priority (low/medium/high/critical). (4) Give a one-sentence reason. (5) Produce a concise 3-7 word ticket title summarising the issue. Call the tool.",
+          "You triage help-desk submissions. A single submission may contain MULTIPLE distinct issues belonging to DIFFERENT departments (HR, IT, Finance, Operations). Split it into one item per department. For each item: category (exactly one of HR/IT/Finance/Operations); resolution SELF_SERVICE or ESCALATED; priority low/medium/high/critical; one-sentence reason; concise 3-7 word title; and excerpt — the verbatim portion of the user's message describing THIS issue. Only split when issues clearly belong to different departments; otherwise return a single item. Call the tool.",
       },
       { role: "user", content: message },
     ],
     tools: [{
       type: "function",
       function: {
-        name: "triage_ticket",
-        description: "Classify the ticket and decide whether it is self-service or needs human escalation",
+        name: "triage_tickets",
+        description: "Split the submission into per-department tickets.",
         parameters: {
           type: "object",
           properties: {
-            category: { type: "string", enum: CATEGORIES as unknown as string[] },
-            resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
-            priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-            reason: { type: "string" },
-            title: { type: "string", description: "Concise 3-7 word ticket title" },
+            items: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                properties: {
+                  category: { type: "string", enum: CATEGORIES as unknown as string[] },
+                  resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
+                  priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                  reason: { type: "string" },
+                  title: { type: "string" },
+                  excerpt: { type: "string" },
+                },
+                required: ["category", "resolution", "priority", "reason", "title", "excerpt"],
+                additionalProperties: false,
+              },
+            },
           },
-          required: ["category", "resolution", "priority", "reason", "title"],
+          required: ["items"],
           additionalProperties: false,
         },
       },
     }],
-    tool_choice: { type: "function", function: { name: "triage_ticket" } },
+    tool_choice: { type: "function", function: { name: "triage_tickets" } },
   });
   const call = json.choices?.[0]?.message?.tool_calls?.[0];
   const args = call?.function?.arguments ? JSON.parse(call.function.arguments) : {};
-  return {
-    category: CATEGORIES.includes(args.category) ? args.category : "Operations",
-    resolution: args.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
-    reason: typeof args.reason === "string" ? args.reason : "Triage decision recorded.",
-    priority: ["low", "medium", "high", "critical"].includes(args.priority) ? args.priority : "medium",
-    title: typeof args.title === "string" && args.title.trim() ? args.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
-  };
+  const raw: unknown[] = Array.isArray(args.items) ? args.items : [];
+  const parsed: TriageItem[] = raw.map((r) => {
+    const o = r as Record<string, unknown>;
+    return {
+      category: CATEGORIES.includes(o.category as Category) ? (o.category as Category) : "Operations",
+      resolution: o.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
+      reason: typeof o.reason === "string" ? o.reason : "Triage decision recorded.",
+      priority: ["low", "medium", "high", "critical"].includes(o.priority as string) ? (o.priority as TriageItem["priority"]) : "medium",
+      title: typeof o.title === "string" && o.title.trim() ? o.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
+      excerpt: typeof o.excerpt === "string" && o.excerpt.trim() ? o.excerpt.trim() : message,
+    };
+  });
+  // Merge any duplicates by department
+  const byCat = new Map<Category, TriageItem>();
+  for (const it of parsed) {
+    const ex = byCat.get(it.category);
+    if (ex) ex.excerpt = `${ex.excerpt}\n${it.excerpt}`;
+    else byCat.set(it.category, { ...it });
+  }
+  const result = Array.from(byCat.values());
+  return result.length > 0 ? result : [{
+    category: "Operations", resolution: "escalated", reason: "Default routing", priority: "medium",
+    title: message.slice(0, 60) + (message.length > 60 ? "…" : ""), excerpt: message,
+  }];
 }
 
 
