@@ -193,6 +193,7 @@ export const startConversation = createServerFn({ method: "POST" })
     }).parse(input),
   )
   .handler(async ({ data }) => {
+    verifyAccessCode(data.accessCode);
     const { data: user, error: ue } = await supabaseAdmin
       .from("app_users").insert({ name: data.name, email: data.email, department: data.department })
       .select().single();
