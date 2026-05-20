@@ -176,6 +176,12 @@ async function bumpAgentWorkload(agentId: string, delta: number) {
 
 // ---------- PUBLIC ----------
 
+function verifyAccessCode(code: string) {
+  const expected = process.env.COMPANY_ACCESS_CODE;
+  if (!expected) throw new Error("Access control is not configured. Please contact your administrator.");
+  if (code !== expected) throw new Error("Invalid access code. Please contact your administrator.");
+}
+
 export const startConversation = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({
@@ -183,9 +189,11 @@ export const startConversation = createServerFn({ method: "POST" })
       email: z.string().trim().email().max(255),
       department: z.enum(DEPARTMENT_OPTIONS),
       message: z.string().trim().min(5).max(2000),
+      accessCode: z.string().min(1).max(200),
     }).parse(input),
   )
   .handler(async ({ data }) => {
+    verifyAccessCode(data.accessCode);
     const { data: user, error: ue } = await supabaseAdmin
       .from("app_users").insert({ name: data.name, email: data.email, department: data.department })
       .select().single();
@@ -369,9 +377,10 @@ export const rateTicket = createServerFn({ method: "POST" })
 
 export const userListTicketsByEmail = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ email: z.string().trim().email().max(255) }).parse(input),
+    z.object({ email: z.string().trim().email().max(255), accessCode: z.string().min(1).max(200) }).parse(input),
   )
   .handler(async ({ data }) => {
+    verifyAccessCode(data.accessCode);
     const email = data.email.toLowerCase();
     const { data: users } = await supabaseAdmin
       .from("app_users").select("id, name, email").ilike("email", email);
@@ -397,9 +406,10 @@ export const userListTicketsByEmail = createServerFn({ method: "POST" })
 
 export const userGetTicket = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ email: z.string().trim().email().max(255), ticketId: z.string().uuid() }).parse(input),
+    z.object({ email: z.string().trim().email().max(255), ticketId: z.string().uuid(), accessCode: z.string().min(1).max(200) }).parse(input),
   )
   .handler(async ({ data }) => {
+    verifyAccessCode(data.accessCode);
     const email = data.email.toLowerCase();
     const { data: ticket, error } = await supabaseAdmin
       .from("tickets").select("*").eq("id", data.ticketId).maybeSingle();

@@ -47,32 +47,46 @@ function MyTicketsPage() {
   const get = useServerFn(userGetTicket);
 
   const [email, setEmail] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [submittedAccessCode, setSubmittedAccessCode] = useState<string | null>(null);
   const [tickets, setTickets] = useState<TicketRow[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState<{ ticket: TicketRow; messages: Msg[]; agent: string | null } | null>(null);
 
   const load = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    setAccessCodeError(null);
     if (!email.trim()) return;
+    if (!accessCode.trim()) {
+      setAccessCodeError("Invalid access code. Please contact your administrator.");
+      return;
+    }
     setBusy(true);
     try {
-      const res = await list({ data: { email: email.trim() } });
+      const res = await list({ data: { email: email.trim(), accessCode: accessCode.trim() } });
       setTickets(res.tickets as TicketRow[]);
       setSubmittedEmail(email.trim());
+      setSubmittedAccessCode(accessCode.trim());
       setActive(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load");
+      const msg = err instanceof Error ? err.message : "Failed to load";
+      if (msg.toLowerCase().includes("access code")) {
+        setAccessCodeError("Invalid access code. Please contact your administrator.");
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
   };
 
   const open = async (t: TicketRow) => {
-    if (!submittedEmail) return;
+    if (!submittedEmail || !submittedAccessCode) return;
     setBusy(true);
     try {
-      const res = await get({ data: { email: submittedEmail, ticketId: t.id } });
+      const res = await get({ data: { email: submittedEmail, ticketId: t.id, accessCode: submittedAccessCode } });
       setActive({ ticket: res.ticket as unknown as TicketRow, messages: res.messages as Msg[], agent: res.assignedAgentName });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load ticket");
@@ -100,21 +114,42 @@ function MyTicketsPage() {
         </div>
 
         <Card className="p-6">
-          <form onSubmit={load} className="flex flex-col sm:flex-row gap-3 items-end">
-            <div className="flex-1 space-y-2 w-full">
+          <form onSubmit={load} className="space-y-4">
+            <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
             </div>
-            <Button type="submit" disabled={busy} className="bg-accent text-accent-foreground hover:bg-accent/90">
-              {busy ? "Loading…" : "Look up"}
-            </Button>
-            {tickets && (
-              <Button type="button" variant="outline" onClick={() => load()} disabled={busy} aria-label="Refresh">
-                <RefreshCw className="h-4 w-4" />
+            <div className="space-y-2">
+              <Label htmlFor="access-code">Company access code</Label>
+              <Input
+                id="access-code"
+                type="password"
+                required
+                autoComplete="off"
+                maxLength={200}
+                placeholder="Enter your company access code"
+                value={accessCode}
+                onChange={(e) => { setAccessCode(e.target.value); if (accessCodeError) setAccessCodeError(null); }}
+                aria-invalid={!!accessCodeError}
+                aria-describedby={accessCodeError ? "access-code-error" : undefined}
+              />
+              {accessCodeError && (
+                <p id="access-code-error" className="text-xs text-destructive">{accessCodeError}</p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <Button type="submit" disabled={busy} className="bg-accent text-accent-foreground hover:bg-accent/90">
+                {busy ? "Loading…" : "Look up"}
               </Button>
-            )}
+              {tickets && (
+                <Button type="button" variant="outline" onClick={() => load()} disabled={busy} aria-label="Refresh">
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </form>
         </Card>
+
 
         {tickets && tickets.length === 0 && (
           <p className="text-center text-sm text-muted-foreground mt-8">No tickets found for that email.</p>

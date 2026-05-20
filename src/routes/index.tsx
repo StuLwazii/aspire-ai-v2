@@ -50,6 +50,8 @@ function LandingPage() {
             <Link to="/my-tickets">Track my tickets</Link>
           </Button>
         </div>
+        <p className="mt-3 text-xs text-muted-foreground">Access restricted to Aspire AI employees only.</p>
+
 
         <div className="grid sm:grid-cols-3 gap-4 mt-16 text-left">
           {[

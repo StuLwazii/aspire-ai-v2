@@ -27,6 +27,8 @@ export function ChatPortal() {
   const [stage, setStage] = useState<"form" | "chat">("form");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
   const [department, setDepartment] = useState<(typeof DEPARTMENT_OPTIONS)[number]>("Engineering");
   const [first, setFirst] = useState("");
   const [ticket, setTicket] = useState<Ticket | null>(null);
@@ -43,13 +45,18 @@ export function ChatPortal() {
 
   const onStart = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAccessCodeError(null);
+    if (!accessCode.trim()) {
+      setAccessCodeError("Invalid access code. Please contact your administrator.");
+      return;
+    }
     if (first.trim().length < 5) {
       toast.error("Please describe your issue (5+ characters).");
       return;
     }
     setBusy(true);
     try {
-      const res = await start({ data: { name, email, department, message: first.trim() } });
+      const res = await start({ data: { name, email, department, message: first.trim(), accessCode: accessCode.trim() } });
       const t = res.ticket as Ticket;
       setTicket(t);
       setMessages(res.messages as Msg[]);
@@ -60,7 +67,12 @@ export function ChatPortal() {
       }
       setStage("chat");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to submit");
+      const msg = err instanceof Error ? err.message : "Failed to submit";
+      if (msg.toLowerCase().includes("access code")) {
+        setAccessCodeError("Invalid access code. Please contact your administrator.");
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
@@ -156,6 +168,24 @@ export function ChatPortal() {
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" required maxLength={255} value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="access-code">Company access code</Label>
+            <Input
+              id="access-code"
+              type="password"
+              required
+              autoComplete="off"
+              maxLength={200}
+              placeholder="Enter your company access code"
+              value={accessCode}
+              onChange={(e) => { setAccessCode(e.target.value); if (accessCodeError) setAccessCodeError(null); }}
+              aria-invalid={!!accessCodeError}
+              aria-describedby={accessCodeError ? "access-code-error" : undefined}
+            />
+            {accessCodeError && (
+              <p id="access-code-error" className="text-xs text-destructive">{accessCodeError}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="dept">Your department</Label>
