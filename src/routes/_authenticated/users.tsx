@@ -24,7 +24,7 @@ const DEPTS = ["IT", "HR", "Finance", "Operations"] as const;
 
 export const Route = createFileRoute("/_authenticated/users")({
   component: UsersPage,
-  head: () => ({ meta: [{ title: "Users — Helix" }] }),
+  head: () => ({ meta: [{ title: "Users — Aspire AI" }] }),
 });
 
 function UsersPage() {

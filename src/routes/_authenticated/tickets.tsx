@@ -9,7 +9,7 @@ import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 export const Route = createFileRoute("/_authenticated/tickets")({
   component: TicketsPage,
-  head: () => ({ meta: [{ title: "Tickets — Helix" }] }),
+  head: () => ({ meta: [{ title: "Tickets — Aspire AI" }] }),
 });
 
 function TicketsPage() {

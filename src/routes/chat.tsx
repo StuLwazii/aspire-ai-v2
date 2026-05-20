@@ -5,7 +5,7 @@ export const Route = createFileRoute("/chat")({
   component: ChatPage,
   head: () => ({
     meta: [
-      { title: "Help Desk Chat — Helix" },
+      { title: "Help Desk Chat — Aspire AI" },
       { name: "description", content: "Get instant AI-powered help across HR, IT, Finance, and Operations." },
     ],
   }),
