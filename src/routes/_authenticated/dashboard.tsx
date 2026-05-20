@@ -9,6 +9,7 @@ import { AgentWorkload } from "@/components/admin/AgentWorkload";
 import { useRealtimeTickets } from "@/hooks/useRealtimeTickets";
 import type { AdminTicket, Agent } from "@/components/admin/types";
 import { toast } from "sonner";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
   component: DashboardPage,
@@ -18,16 +19,17 @@ export const Route = createFileRoute("/_authenticated/dashboard")({
 function DashboardPage() {
   const fetchTickets = useServerFn(adminListTickets);
   const fetchAgents = useServerFn(adminListAgents);
-  const isBrowser = typeof window !== "undefined";
+  const sessionStatus = useSupabaseSessionStatus();
+  const canCallProtectedFns = sessionStatus === "authenticated";
   const { data: tickets = [], refetch } = useQuery({
     queryKey: ["admin-tickets"],
     queryFn: () => fetchTickets() as Promise<AdminTicket[]>,
-    enabled: isBrowser,
+    enabled: canCallProtectedFns,
   });
   const { data: agents = [], refetch: refetchAgents } = useQuery({
     queryKey: ["agents"],
     queryFn: () => fetchAgents() as Promise<Agent[]>,
-    enabled: isBrowser,
+    enabled: canCallProtectedFns,
   });
   useRealtimeTickets(() => { refetch(); refetchAgents(); });
 
