@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as MyTicketsRouteImport } from './routes/my-tickets'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ChatRouteImport } from './routes/chat'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
@@ -20,6 +21,11 @@ import { Route as AuthenticatedMyQueueRouteImport } from './routes/_authenticate
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
 
+const MyTicketsRoute = MyTicketsRouteImport.update({
+  id: '/my-tickets',
+  path: '/my-tickets',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
+  '/my-tickets': typeof MyTicketsRoute
   '/agents': typeof AuthenticatedAgentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
+  '/my-tickets': typeof MyTicketsRoute
   '/agents': typeof AuthenticatedAgentsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/chat': typeof ChatRoute
   '/login': typeof LoginRoute
+  '/my-tickets': typeof MyTicketsRoute
   '/_authenticated/agents': typeof AuthenticatedAgentsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/my-queue': typeof AuthenticatedMyQueueRoute
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
     | '/'
     | '/chat'
     | '/login'
+    | '/my-tickets'
     | '/agents'
     | '/dashboard'
     | '/my-queue'
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
     | '/'
     | '/chat'
     | '/login'
+    | '/my-tickets'
     | '/agents'
     | '/dashboard'
     | '/my-queue'
@@ -134,6 +145,7 @@ export interface FileRouteTypes {
     | '/_authenticated'
     | '/chat'
     | '/login'
+    | '/my-tickets'
     | '/_authenticated/agents'
     | '/_authenticated/dashboard'
     | '/_authenticated/my-queue'
@@ -147,11 +159,19 @@ export interface RootRouteChildren {
   AuthenticatedRoute: typeof AuthenticatedRouteWithChildren
   ChatRoute: typeof ChatRoute
   LoginRoute: typeof LoginRoute
+  MyTicketsRoute: typeof MyTicketsRoute
   AdminLoginRoute: typeof AdminLoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/my-tickets': {
+      id: '/my-tickets'
+      path: '/my-tickets'
+      fullPath: '/my-tickets'
+      preLoaderRoute: typeof MyTicketsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -250,6 +270,7 @@ const rootRouteChildren: RootRouteChildren = {
   AuthenticatedRoute: AuthenticatedRouteWithChildren,
   ChatRoute: ChatRoute,
   LoginRoute: LoginRoute,
+  MyTicketsRoute: MyTicketsRoute,
   AdminLoginRoute: AdminLoginRoute,
 }
 export const routeTree = rootRouteImport

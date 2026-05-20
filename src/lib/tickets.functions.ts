@@ -301,6 +301,62 @@ export const rateTicket = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// ---------- USER PORTAL (public, lookup by email) ----------
+
+export const userListTicketsByEmail = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ email: z.string().trim().email().max(255) }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const email = data.email.toLowerCase();
+    const { data: users } = await supabaseAdmin
+      .from("app_users").select("id, name, email").ilike("email", email);
+    const ids = (users ?? []).map((u) => u.id);
+    if (ids.length === 0) return { tickets: [] as Array<{ id: string; title: string | null; message: string; status: string; category: string; priority: string; resolution_type: string; created_at: string; updated_at: string; assigned_agent_id: string | null; assigned_agent_name: string | null }> };
+    const { data: tickets, error } = await supabaseAdmin
+      .from("tickets")
+      .select("id, title, message, status, category, priority, resolution_type, created_at, updated_at, assigned_agent_id")
+      .in("user_id", ids)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    const agentIds = Array.from(new Set((tickets ?? []).map((t) => t.assigned_agent_id).filter(Boolean) as string[]));
+    let agentMap: Record<string, string> = {};
+    if (agentIds.length) {
+      const { data: agents } = await supabaseAdmin
+        .from("agents" as never).select("id, full_name").in("id", agentIds) as unknown as { data: { id: string; full_name: string }[] | null };
+      agentMap = Object.fromEntries((agents ?? []).map((a) => [a.id, a.full_name]));
+    }
+    return {
+      tickets: (tickets ?? []).map((t) => ({ ...t, assigned_agent_name: t.assigned_agent_id ? agentMap[t.assigned_agent_id] ?? null : null })),
+    };
+  });
+
+export const userGetTicket = createServerFn({ method: "POST" })
+  .inputValidator((input: unknown) =>
+    z.object({ email: z.string().trim().email().max(255), ticketId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data }) => {
+    const email = data.email.toLowerCase();
+    const { data: ticket, error } = await supabaseAdmin
+      .from("tickets").select("*").eq("id", data.ticketId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!ticket) throw new Error("Ticket not found");
+    const { data: owner } = await supabaseAdmin
+      .from("app_users").select("email").eq("id", ticket.user_id).maybeSingle();
+    if (!owner || owner.email.toLowerCase() !== email) throw new Error("Ticket not found");
+
+    const { data: messages } = await supabaseAdmin
+      .from("conversations").select("*").eq("ticket_id", ticket.id).order("created_at", { ascending: true });
+
+    let agentName: string | null = null;
+    if (ticket.assigned_agent_id) {
+      const { data: agent } = await supabaseAdmin
+        .from("agents" as never).select("full_name").eq("id", ticket.assigned_agent_id).maybeSingle() as unknown as { data: { full_name: string } | null };
+      agentName = agent?.full_name ?? null;
+    }
+    return { ticket, messages: messages ?? [], assignedAgentName: agentName };
+  });
+
 // ---------- ADMIN ----------
 
 export const getMyRole = createServerFn({ method: "GET" })
