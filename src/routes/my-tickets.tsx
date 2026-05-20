@@ -73,7 +73,7 @@ function MyTicketsPage() {
     setBusy(true);
     try {
       const res = await get({ data: { email: submittedEmail, ticketId: t.id } });
-      setActive({ ticket: res.ticket as TicketRow, messages: res.messages as Msg[], agent: res.assignedAgentName });
+      setActive({ ticket: res.ticket as unknown as TicketRow, messages: res.messages as Msg[], agent: res.assignedAgentName });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load ticket");
     } finally {
