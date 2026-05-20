@@ -194,12 +194,14 @@ export const startConversation = createServerFn({ method: "POST" })
     const items = await triageMultiple(data.message);
     const multi = items.length > 1;
 
+    type TicketRow = Awaited<ReturnType<typeof supabaseAdmin.from<"tickets">>>;
     type Created = {
-      ticket: Record<string, unknown> & { id: string };
+      ticket: Record<string, unknown>;
       item: TriageItem;
       assistantText: string;
       assignedAgent: { id: string; full_name: string } | null;
     };
+    void ({} as TicketRow);
     const created: Created[] = [];
 
     for (const item of items) {
