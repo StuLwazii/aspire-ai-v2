@@ -65,22 +65,28 @@ function MyTicketsPage() {
     }
     setBusy(true);
     try {
-      const res = await list({ data: { email: email.trim() } });
+      const res = await list({ data: { email: email.trim(), accessCode: accessCode.trim() } });
       setTickets(res.tickets as TicketRow[]);
       setSubmittedEmail(email.trim());
+      setSubmittedAccessCode(accessCode.trim());
       setActive(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to load");
+      const msg = err instanceof Error ? err.message : "Failed to load";
+      if (msg.toLowerCase().includes("access code")) {
+        setAccessCodeError("Invalid access code. Please contact your administrator.");
+      } else {
+        toast.error(msg);
+      }
     } finally {
       setBusy(false);
     }
   };
 
   const open = async (t: TicketRow) => {
-    if (!submittedEmail) return;
+    if (!submittedEmail || !submittedAccessCode) return;
     setBusy(true);
     try {
-      const res = await get({ data: { email: submittedEmail, ticketId: t.id } });
+      const res = await get({ data: { email: submittedEmail, ticketId: t.id, accessCode: submittedAccessCode } });
       setActive({ ticket: res.ticket as unknown as TicketRow, messages: res.messages as Msg[], agent: res.assignedAgentName });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to load ticket");
