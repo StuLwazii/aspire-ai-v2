@@ -2,7 +2,7 @@ import { createFileRoute, redirect, Outlet, Link, useNavigate, useRouterState } 
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyRole } from "@/lib/tickets.functions";
-import { LayoutDashboard, Ticket, LogOut, Users } from "lucide-react";
+import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -95,6 +95,7 @@ function AuthLayout() {
           {navItem("/dashboard", "Dashboard", LayoutDashboard)}
           {navItem("/tickets", "Tickets", Ticket)}
           {navItem("/agents", "Agents", Users)}
+          {navItem("/users", "Users & Admins", ShieldCheck)}
         </nav>
         <div className="p-3 border-t border-sidebar-border">
           <Button variant="ghost" className="w-full justify-start text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={logout}>
