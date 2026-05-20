@@ -464,6 +464,60 @@ export const adminSetUserRole = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+export const adminPromoteToAgent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      userId: z.string().uuid(),
+      department: z.enum(CATEGORIES),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    // Get the auth user's email + name
+    const { data: u, error: ue } = await supabaseAdmin.auth.admin.getUserById(data.userId);
+    if (ue || !u.user) throw new Error(ue?.message ?? "User not found");
+    const email = u.user.email ?? "";
+    const full_name = (u.user.user_metadata?.full_name as string | undefined) ?? email.split("@")[0] ?? "Agent";
+
+    // Find an existing agent record linked to this user OR matching email
+    const { data: existingByUser } = await supabaseAdmin
+      .from("agents" as never).select("id").eq("user_id", data.userId).maybeSingle() as unknown as { data: { id: string } | null };
+
+    let agentId = existingByUser?.id ?? null;
+
+    if (!agentId) {
+      const { data: existingByEmail } = await supabaseAdmin
+        .from("agents" as never).select("id").eq("email", email).is("user_id", null).maybeSingle() as unknown as { data: { id: string } | null };
+      if (existingByEmail) {
+        agentId = existingByEmail.id;
+        await supabaseAdmin.from("agents" as never)
+          .update({ user_id: data.userId, department: data.department } as never)
+          .eq("id", agentId);
+      } else {
+        const { data: created, error: ce } = await supabaseAdmin
+          .from("agents" as never)
+          .insert({ full_name, email, department: data.department, status: "available", user_id: data.userId } as never)
+          .select().single() as unknown as { data: { id: string } | null; error: { message: string } | null };
+        if (ce) throw new Error(ce.message);
+        agentId = created!.id;
+      }
+    } else {
+      await supabaseAdmin.from("agents" as never)
+        .update({ department: data.department } as never)
+        .eq("id", agentId);
+    }
+
+    const { error: re } = await supabaseAdmin
+      .from("user_roles")
+      .upsert({ user_id: data.userId, role: "agent" }, { onConflict: "user_id,role" });
+    if (re) throw new Error(re.message);
+
+    return { ok: true, agentId };
+  });
+
+
+
 // ---------- AGENT ENDPOINTS ----------
 
 async function getMyAgent(userId: string): Promise<{ id: string; department: string; full_name: string } | null> {
