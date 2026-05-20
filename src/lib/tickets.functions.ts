@@ -312,7 +312,7 @@ export const userListTicketsByEmail = createServerFn({ method: "POST" })
     const { data: users } = await supabaseAdmin
       .from("app_users").select("id, name, email").ilike("email", email);
     const ids = (users ?? []).map((u) => u.id);
-    if (ids.length === 0) return { tickets: [] as Array<Record<string, unknown>> };
+    if (ids.length === 0) return { tickets: [] as Array<{ id: string; title: string | null; message: string; status: string; category: string; priority: string; resolution_type: string; created_at: string; updated_at: string; assigned_agent_id: string | null; assigned_agent_name: string | null }> };
     const { data: tickets, error } = await supabaseAdmin
       .from("tickets")
       .select("id, title, message, status, category, priority, resolution_type, created_at, updated_at, assigned_agent_id")
