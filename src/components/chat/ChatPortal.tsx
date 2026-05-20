@@ -142,7 +142,7 @@ export function ChatPortal() {
             <MessageCircle className="h-5 w-5 text-accent-foreground" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">Helix Help Desk</h1>
+            <h1 className="text-xl font-bold">Aspire AI</h1>
             <p className="text-xs text-muted-foreground">AI-powered support</p>
           </div>
         </div>
@@ -196,7 +196,7 @@ export function ChatPortal() {
           <ArrowLeft className="h-4 w-4 text-accent-foreground" />
         </Link>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm">Helix Assistant</div>
+          <div className="font-semibold text-sm">Aspire AI</div>
           {ticket && (
             <div className="text-[10px] text-muted-foreground flex items-center gap-1.5">
               <TicketIcon className="h-3 w-3" />
