@@ -38,6 +38,7 @@ async function classifyAndDecide(message: string): Promise<{
   resolution: "self_service" | "escalated";
   reason: string;
   priority: "low" | "medium" | "high" | "critical";
+  title: string;
 }> {
   const json = await callAI({
     model: "google/gemini-2.5-flash",
@@ -45,7 +46,7 @@ async function classifyAndDecide(message: string): Promise<{
       {
         role: "system",
         content:
-          "You triage help-desk tickets. (1) Classify into exactly one of: HR, IT, Finance, Operations. (2) Decide SELF_SERVICE (the user can resolve it themselves by following clear instructions: password resets, how-to questions, policy questions, process questions, etc.) vs ESCALATED (requires a human to physically act: broken hardware, payroll correction, network outage, contract signing, manual approval, maintenance, disciplinary, etc.). (3) Assign a priority (low/medium/high/critical). (4) Give a one-sentence reason. Call the tool.",
+          "You triage help-desk tickets. (1) Classify into exactly one of: HR, IT, Finance, Operations. (2) Decide SELF_SERVICE (user can resolve themselves with clear steps) vs ESCALATED (requires a human to act). (3) Assign a priority (low/medium/high/critical). (4) Give a one-sentence reason. (5) Produce a concise 3-7 word ticket title summarising the issue. Call the tool.",
       },
       { role: "user", content: message },
     ],
@@ -61,8 +62,9 @@ async function classifyAndDecide(message: string): Promise<{
             resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
             priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
             reason: { type: "string" },
+            title: { type: "string", description: "Concise 3-7 word ticket title" },
           },
-          required: ["category", "resolution", "priority", "reason"],
+          required: ["category", "resolution", "priority", "reason", "title"],
           additionalProperties: false,
         },
       },
@@ -76,8 +78,10 @@ async function classifyAndDecide(message: string): Promise<{
     resolution: args.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
     reason: typeof args.reason === "string" ? args.reason : "Triage decision recorded.",
     priority: ["low", "medium", "high", "critical"].includes(args.priority) ? args.priority : "medium",
+    title: typeof args.title === "string" && args.title.trim() ? args.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
   };
 }
+
 
 async function generateSelfServiceSteps(message: string, category: Category): Promise<string> {
   const json = await callAI({
@@ -185,6 +189,7 @@ You will be notified as soon as your ticket is picked up.`;
     const ticketInsert: Record<string, unknown> = {
       user_id: user.id,
       message: data.message,
+      title: triage.title,
       category: triage.category,
       ai_response: assistantText,
       status,
@@ -196,6 +201,7 @@ You will be notified as soon as your ticket is picked up.`;
     const { data: ticket, error: te } = await supabaseAdmin
       .from("tickets").insert(ticketInsert as never).select().single();
     if (te) throw new Error(te.message);
+
 
     if (assignedAgent) await bumpAgentWorkload(assignedAgent.id, +1);
 
