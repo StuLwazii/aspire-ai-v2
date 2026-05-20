@@ -168,6 +168,23 @@ export function ChatPortal() {
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" required maxLength={255} value={email} onChange={(e) => setEmail(e.target.value)} />
+          <div className="space-y-2">
+            <Label htmlFor="access-code">Company access code</Label>
+            <Input
+              id="access-code"
+              type="password"
+              required
+              autoComplete="off"
+              maxLength={200}
+              placeholder="Enter your company access code"
+              value={accessCode}
+              onChange={(e) => { setAccessCode(e.target.value); if (accessCodeError) setAccessCodeError(null); }}
+              aria-invalid={!!accessCodeError}
+              aria-describedby={accessCodeError ? "access-code-error" : undefined}
+            />
+            {accessCodeError && (
+              <p id="access-code-error" className="text-xs text-destructive">{accessCodeError}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="dept">Your department</Label>
