@@ -308,8 +308,23 @@ export const getMyRole = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", context.userId);
     const roles = (data ?? []).map((r) => r.role);
-    return { roles, isAdmin: roles.includes("admin") };
+    let agentRecord: { id: string; full_name: string; department: string } | null = null;
+    if (roles.includes("agent")) {
+      const { data: a } = await supabaseAdmin
+        .from("agents" as never)
+        .select("id, full_name, department")
+        .eq("user_id", context.userId)
+        .maybeSingle() as unknown as { data: { id: string; full_name: string; department: string } | null };
+      agentRecord = a;
+    }
+    return {
+      roles,
+      isAdmin: roles.includes("admin"),
+      isAgent: roles.includes("agent"),
+      agentRecord,
+    };
   });
+
 
 export const adminListTickets = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
