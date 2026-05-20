@@ -406,9 +406,10 @@ export const userListTicketsByEmail = createServerFn({ method: "POST" })
 
 export const userGetTicket = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
-    z.object({ email: z.string().trim().email().max(255), ticketId: z.string().uuid() }).parse(input),
+    z.object({ email: z.string().trim().email().max(255), ticketId: z.string().uuid(), accessCode: z.string().min(1).max(200) }).parse(input),
   )
   .handler(async ({ data }) => {
+    verifyAccessCode(data.accessCode);
     const email = data.email.toLowerCase();
     const { data: ticket, error } = await supabaseAdmin
       .from("tickets").select("*").eq("id", data.ticketId).maybeSingle();
