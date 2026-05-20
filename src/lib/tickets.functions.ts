@@ -38,6 +38,7 @@ async function classifyAndDecide(message: string): Promise<{
   resolution: "self_service" | "escalated";
   reason: string;
   priority: "low" | "medium" | "high" | "critical";
+  title: string;
 }> {
   const json = await callAI({
     model: "google/gemini-2.5-flash",
@@ -45,7 +46,7 @@ async function classifyAndDecide(message: string): Promise<{
       {
         role: "system",
         content:
-          "You triage help-desk tickets. (1) Classify into exactly one of: HR, IT, Finance, Operations. (2) Decide SELF_SERVICE (the user can resolve it themselves by following clear instructions: password resets, how-to questions, policy questions, process questions, etc.) vs ESCALATED (requires a human to physically act: broken hardware, payroll correction, network outage, contract signing, manual approval, maintenance, disciplinary, etc.). (3) Assign a priority (low/medium/high/critical). (4) Give a one-sentence reason. Call the tool.",
+          "You triage help-desk tickets. (1) Classify into exactly one of: HR, IT, Finance, Operations. (2) Decide SELF_SERVICE (user can resolve themselves with clear steps) vs ESCALATED (requires a human to act). (3) Assign a priority (low/medium/high/critical). (4) Give a one-sentence reason. (5) Produce a concise 3-7 word ticket title summarising the issue. Call the tool.",
       },
       { role: "user", content: message },
     ],
@@ -61,8 +62,9 @@ async function classifyAndDecide(message: string): Promise<{
             resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
             priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
             reason: { type: "string" },
+            title: { type: "string", description: "Concise 3-7 word ticket title" },
           },
-          required: ["category", "resolution", "priority", "reason"],
+          required: ["category", "resolution", "priority", "reason", "title"],
           additionalProperties: false,
         },
       },
@@ -76,8 +78,10 @@ async function classifyAndDecide(message: string): Promise<{
     resolution: args.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
     reason: typeof args.reason === "string" ? args.reason : "Triage decision recorded.",
     priority: ["low", "medium", "high", "critical"].includes(args.priority) ? args.priority : "medium",
+    title: typeof args.title === "string" && args.title.trim() ? args.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
   };
 }
+
 
 async function generateSelfServiceSteps(message: string, category: Category): Promise<string> {
   const json = await callAI({
@@ -185,6 +189,7 @@ You will be notified as soon as your ticket is picked up.`;
     const ticketInsert: Record<string, unknown> = {
       user_id: user.id,
       message: data.message,
+      title: triage.title,
       category: triage.category,
       ai_response: assistantText,
       status,
@@ -196,6 +201,7 @@ You will be notified as soon as your ticket is picked up.`;
     const { data: ticket, error: te } = await supabaseAdmin
       .from("tickets").insert(ticketInsert as never).select().single();
     if (te) throw new Error(te.message);
+
 
     if (assignedAgent) await bumpAgentWorkload(assignedAgent.id, +1);
 
@@ -302,8 +308,23 @@ export const getMyRole = createServerFn({ method: "GET" })
   .handler(async ({ context }) => {
     const { data } = await supabaseAdmin.from("user_roles").select("role").eq("user_id", context.userId);
     const roles = (data ?? []).map((r) => r.role);
-    return { roles, isAdmin: roles.includes("admin") };
+    let agentRecord: { id: string; full_name: string; department: string } | null = null;
+    if (roles.includes("agent")) {
+      const { data: a } = await supabaseAdmin
+        .from("agents" as never)
+        .select("id, full_name, department")
+        .eq("user_id", context.userId)
+        .maybeSingle() as unknown as { data: { id: string; full_name: string; department: string } | null };
+      agentRecord = a;
+    }
+    return {
+      roles,
+      isAdmin: roles.includes("admin"),
+      isAgent: roles.includes("agent"),
+      agentRecord,
+    };
   });
+
 
 export const adminListTickets = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
@@ -394,6 +415,7 @@ export const adminListUsers = createServerFn({ method: "GET" })
       last_sign_in_at: u.last_sign_in_at ?? null,
       roles: roleMap.get(u.id) ?? [],
       isAdmin: (roleMap.get(u.id) ?? []).includes("admin"),
+      isAgent: (roleMap.get(u.id) ?? []).includes("agent"),
       isSelf: u.id === context.userId,
     }));
   });
@@ -403,29 +425,180 @@ export const adminSetUserRole = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({
       userId: z.string().uuid(),
-      makeAdmin: z.boolean(),
+      role: z.enum(["admin", "agent"]),
+      grant: z.boolean(),
+      agentId: z.string().uuid().optional(), // when granting 'agent', link to an existing agent record
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    if (data.userId === context.userId && !data.makeAdmin) {
+    if (data.userId === context.userId && data.role === "admin" && !data.grant) {
       throw new Error("You cannot remove your own admin role.");
     }
-    if (data.makeAdmin) {
+    if (data.grant) {
       const { error } = await supabaseAdmin
         .from("user_roles")
-        .upsert({ user_id: data.userId, role: "admin" }, { onConflict: "user_id,role" });
+        .upsert({ user_id: data.userId, role: data.role }, { onConflict: "user_id,role" });
       if (error) throw new Error(error.message);
+      if (data.role === "agent" && data.agentId) {
+        const { error: linkErr } = await supabaseAdmin
+          .from("agents" as never)
+          .update({ user_id: data.userId } as never)
+          .eq("id", data.agentId);
+        if (linkErr) throw new Error(linkErr.message);
+      }
     } else {
       const { error } = await supabaseAdmin
         .from("user_roles")
         .delete()
         .eq("user_id", data.userId)
-        .eq("role", "admin");
+        .eq("role", data.role);
       if (error) throw new Error(error.message);
+      if (data.role === "agent") {
+        await supabaseAdmin
+          .from("agents" as never)
+          .update({ user_id: null } as never)
+          .eq("user_id", data.userId);
+      }
     }
     return { ok: true };
   });
+
+export const adminPromoteToAgent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      userId: z.string().uuid(),
+      department: z.enum(CATEGORIES),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    // Get the auth user's email + name
+    const { data: u, error: ue } = await supabaseAdmin.auth.admin.getUserById(data.userId);
+    if (ue || !u.user) throw new Error(ue?.message ?? "User not found");
+    const email = u.user.email ?? "";
+    const full_name = (u.user.user_metadata?.full_name as string | undefined) ?? email.split("@")[0] ?? "Agent";
+
+    // Find an existing agent record linked to this user OR matching email
+    const { data: existingByUser } = await supabaseAdmin
+      .from("agents" as never).select("id").eq("user_id", data.userId).maybeSingle() as unknown as { data: { id: string } | null };
+
+    let agentId = existingByUser?.id ?? null;
+
+    if (!agentId) {
+      const { data: existingByEmail } = await supabaseAdmin
+        .from("agents" as never).select("id").eq("email", email).is("user_id", null).maybeSingle() as unknown as { data: { id: string } | null };
+      if (existingByEmail) {
+        agentId = existingByEmail.id;
+        await supabaseAdmin.from("agents" as never)
+          .update({ user_id: data.userId, department: data.department } as never)
+          .eq("id", agentId);
+      } else {
+        const { data: created, error: ce } = await supabaseAdmin
+          .from("agents" as never)
+          .insert({ full_name, email, department: data.department, status: "available", user_id: data.userId } as never)
+          .select().single() as unknown as { data: { id: string } | null; error: { message: string } | null };
+        if (ce) throw new Error(ce.message);
+        agentId = created!.id;
+      }
+    } else {
+      await supabaseAdmin.from("agents" as never)
+        .update({ department: data.department } as never)
+        .eq("id", agentId);
+    }
+
+    const { error: re } = await supabaseAdmin
+      .from("user_roles")
+      .upsert({ user_id: data.userId, role: "agent" }, { onConflict: "user_id,role" });
+    if (re) throw new Error(re.message);
+
+    return { ok: true, agentId };
+  });
+
+
+
+// ---------- AGENT ENDPOINTS ----------
+
+async function getMyAgent(userId: string): Promise<{ id: string; department: string; full_name: string } | null> {
+  const { data } = await supabaseAdmin
+    .from("agents" as never)
+    .select("id, department, full_name")
+    .eq("user_id", userId)
+    .maybeSingle() as unknown as { data: { id: string; department: string; full_name: string } | null };
+  return data;
+}
+
+export const agentListMyTickets = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const me = await getMyAgent(context.userId);
+    if (!me) throw new Error("You are not linked to an agent profile.");
+    const { data, error } = await supabaseAdmin
+      .from("tickets")
+      .select("*, app_users(name, email, department), agents:assigned_agent_id(id, full_name, department, status)")
+      .eq("assigned_agent_id", me.id)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return { agent: me, tickets: data ?? [] };
+  });
+
+export const agentGetConversation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ ticketId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const me = await getMyAgent(context.userId);
+    if (!me) throw new Error("Forbidden");
+    // ensure ticket is assigned to this agent
+    const { data: t } = await supabaseAdmin
+      .from("tickets").select("assigned_agent_id").eq("id", data.ticketId).maybeSingle();
+    if (!t || (t as { assigned_agent_id: string | null }).assigned_agent_id !== me.id) {
+      throw new Error("Forbidden");
+    }
+    const { data: rows, error } = await supabaseAdmin
+      .from("conversations").select("*").eq("ticket_id", data.ticketId).order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const agentRespondToTicket = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      ticketId: z.string().uuid(),
+      response: z.string().trim().min(1).max(5000).optional(),
+      status: z.enum(["open", "in_progress", "escalated", "resolved"]).optional(),
+      admin_notes: z.string().trim().max(5000).nullable().optional(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const me = await getMyAgent(context.userId);
+    if (!me) throw new Error("Forbidden");
+    const { data: prev } = await supabaseAdmin
+      .from("tickets").select("assigned_agent_id, status").eq("id", data.ticketId).maybeSingle();
+    const p = prev as { assigned_agent_id: string | null; status: string } | null;
+    if (!p || p.assigned_agent_id !== me.id) throw new Error("Forbidden");
+
+    const patch: Record<string, unknown> = {};
+    if (data.status) patch.status = data.status;
+    if (data.admin_notes !== undefined) patch.admin_notes = data.admin_notes;
+    if (Object.keys(patch).length) {
+      const { error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", data.ticketId);
+      if (error) throw new Error(error.message);
+    }
+    if (data.response) {
+      const { error } = await supabaseAdmin.from("conversations").insert({
+        ticket_id: data.ticketId, role: "assistant", message: data.response,
+      });
+      if (error) throw new Error(error.message);
+    }
+    if (data.status === "resolved" && p.status !== "resolved") {
+      await bumpAgentWorkload(me.id, -1);
+    }
+    return { ok: true };
+  });
+
+
 
 export const adminGetConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])

@@ -24,6 +24,7 @@ export type Database = {
           id: string
           status: Database["public"]["Enums"]["agent_status"]
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -34,6 +35,7 @@ export type Database = {
           id?: string
           status?: Database["public"]["Enums"]["agent_status"]
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -44,6 +46,7 @@ export type Database = {
           id?: string
           status?: Database["public"]["Enums"]["agent_status"]
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -119,6 +122,7 @@ export type Database = {
           resolution_type: Database["public"]["Enums"]["resolution_type"]
           resolved_by_user: boolean
           status: Database["public"]["Enums"]["ticket_status"]
+          title: string | null
           updated_at: string
           user_id: string
         }
@@ -137,6 +141,7 @@ export type Database = {
           resolution_type?: Database["public"]["Enums"]["resolution_type"]
           resolved_by_user?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
+          title?: string | null
           updated_at?: string
           user_id: string
         }
@@ -155,6 +160,7 @@ export type Database = {
           resolution_type?: Database["public"]["Enums"]["resolution_type"]
           resolved_by_user?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
+          title?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -211,7 +217,7 @@ export type Database = {
     }
     Enums: {
       agent_status: "available" | "busy" | "offline"
-      app_role: "admin" | "user"
+      app_role: "admin" | "user" | "agent"
       resolution_type: "self_service" | "escalated" | "pending"
       ticket_category: "HR" | "IT" | "Finance" | "Operations"
       ticket_priority: "low" | "medium" | "high" | "critical"
@@ -346,7 +352,7 @@ export const Constants = {
   public: {
     Enums: {
       agent_status: ["available", "busy", "offline"],
-      app_role: ["admin", "user"],
+      app_role: ["admin", "user", "agent"],
       resolution_type: ["self_service", "escalated", "pending"],
       ticket_category: ["HR", "IT", "Finance", "Operations"],
       ticket_priority: ["low", "medium", "high", "critical"],
