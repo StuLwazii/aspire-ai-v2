@@ -46,6 +46,9 @@ function LandingPage() {
               Log a ticket <ArrowRight className="h-4 w-4 ml-1.5" />
             </Link>
           </Button>
+          <Button asChild size="lg" variant="outline">
+            <Link to="/my-tickets">Track my tickets</Link>
+          </Button>
         </div>
 
         <div className="grid sm:grid-cols-3 gap-4 mt-16 text-left">
