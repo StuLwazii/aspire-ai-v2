@@ -2,9 +2,10 @@ import { createFileRoute, redirect, Outlet, Link, useNavigate, useRouterState } 
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyRole } from "@/lib/tickets.functions";
-import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck, Inbox, Moon, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { useTheme } from "@/components/theme-provider";
 
 export const Route = createFileRoute("/_authenticated")({
   beforeLoad: async () => {
@@ -15,12 +16,20 @@ export const Route = createFileRoute("/_authenticated")({
   component: AuthLayout,
 });
 
-function useIsAdmin() {
-  const [state, setState] = useState<"loading" | "ok" | "denied">("loading");
+type RoleState =
+  | { kind: "loading" }
+  | { kind: "denied" }
+  | { kind: "ok"; isAdmin: boolean; isAgent: boolean };
+
+function useMyRole(): RoleState {
+  const [state, setState] = useState<RoleState>({ kind: "loading" });
   const navigate = useNavigate();
   useEffect(() => {
     getMyRole()
-      .then((r) => setState(r.isAdmin ? "ok" : "denied"))
+      .then((r) => {
+        if (!r.isAdmin && !r.isAgent) setState({ kind: "denied" });
+        else setState({ kind: "ok", isAdmin: r.isAdmin, isAgent: r.isAgent });
+      })
       .catch(async (err) => {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg.toLowerCase().includes("unauthorized")) {
@@ -28,7 +37,7 @@ function useIsAdmin() {
           navigate({ to: "/admin/login" });
           return;
         }
-        setState("denied");
+        setState({ kind: "denied" });
       });
   }, [navigate]);
   return state;
@@ -37,7 +46,8 @@ function useIsAdmin() {
 function AuthLayout() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const adminState = useIsAdmin();
+  const roleState = useMyRole();
+  const { theme, toggle } = useTheme();
 
   const logout = async () => {
     await supabase.auth.signOut();
@@ -45,19 +55,29 @@ function AuthLayout() {
     navigate({ to: "/admin/login" });
   };
 
-  if (adminState === "loading") {
+  if (roleState.kind === "loading") {
     return <div className="min-h-screen flex items-center justify-center text-sm text-muted-foreground">Checking permissions…</div>;
   }
-  if (adminState === "denied") {
+  if (roleState.kind === "denied") {
     return (
       <div className="min-h-screen flex items-center justify-center p-6">
         <div className="max-w-md text-center space-y-4">
-          <h1 className="text-xl font-semibold">Admin access required</h1>
-          <p className="text-sm text-muted-foreground">Your account isn't assigned the admin role. Ask an admin to grant access.</p>
+          <h1 className="text-xl font-semibold">Access required</h1>
+          <p className="text-sm text-muted-foreground">Your account isn't assigned an admin or agent role yet. Ask an admin to grant access.</p>
           <Button onClick={logout} variant="outline">Sign out</Button>
         </div>
       </div>
     );
+  }
+
+  const { isAdmin, isAgent } = roleState;
+
+  // Agent-only users should only see their queue. Redirect them if they land on admin pages.
+  if (!isAdmin && isAgent) {
+    const allowed = pathname.startsWith("/my-queue");
+    if (!allowed) {
+      navigate({ to: "/my-queue" });
+    }
   }
 
   const navItem = (to: string, label: string, Icon: typeof Ticket) => {
@@ -87,17 +107,28 @@ function AuthLayout() {
             </div>
             <div>
               <div className="font-bold text-sm">Helix</div>
-              <div className="text-[11px] text-sidebar-foreground/60">Help Desk</div>
+              <div className="text-[11px] text-sidebar-foreground/60">
+                {isAdmin ? "Admin" : "Agent"} portal
+              </div>
             </div>
           </div>
         </div>
         <nav className="flex-1 p-3 space-y-1">
-          {navItem("/dashboard", "Dashboard", LayoutDashboard)}
-          {navItem("/tickets", "Tickets", Ticket)}
-          {navItem("/agents", "Agents", Users)}
-          {navItem("/users", "Users & Admins", ShieldCheck)}
+          {isAdmin && navItem("/dashboard", "Dashboard", LayoutDashboard)}
+          {isAdmin && navItem("/tickets", "Tickets", Ticket)}
+          {isAdmin && navItem("/agents", "Agents", Users)}
+          {isAdmin && navItem("/users", "Users & Admins", ShieldCheck)}
+          {isAgent && navItem("/my-queue", "My queue", Inbox)}
         </nav>
-        <div className="p-3 border-t border-sidebar-border">
+        <div className="p-3 border-t border-sidebar-border space-y-1">
+          <Button
+            variant="ghost"
+            className="w-full justify-start text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            onClick={toggle}
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </Button>
           <Button variant="ghost" className="w-full justify-start text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-foreground" onClick={logout}>
             <LogOut className="h-4 w-4 mr-2" /> Sign out
           </Button>
@@ -111,7 +142,12 @@ function AuthLayout() {
             </div>
             <span className="font-bold">Helix</span>
           </div>
-          <Button size="sm" variant="ghost" onClick={logout}><LogOut className="h-4 w-4" /></Button>
+          <div className="flex gap-1">
+            <Button size="sm" variant="ghost" onClick={toggle}>
+              {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={logout}><LogOut className="h-4 w-4" /></Button>
+          </div>
         </div>
         <Outlet />
       </main>
