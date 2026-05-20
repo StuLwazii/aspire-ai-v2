@@ -415,6 +415,7 @@ export const adminListUsers = createServerFn({ method: "GET" })
       last_sign_in_at: u.last_sign_in_at ?? null,
       roles: roleMap.get(u.id) ?? [],
       isAdmin: (roleMap.get(u.id) ?? []).includes("admin"),
+      isAgent: (roleMap.get(u.id) ?? []).includes("agent"),
       isSelf: u.id === context.userId,
     }));
   });
@@ -424,29 +425,126 @@ export const adminSetUserRole = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({
       userId: z.string().uuid(),
-      makeAdmin: z.boolean(),
+      role: z.enum(["admin", "agent"]),
+      grant: z.boolean(),
+      agentId: z.string().uuid().optional(), // when granting 'agent', link to an existing agent record
     }).parse(input),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context.userId);
-    if (data.userId === context.userId && !data.makeAdmin) {
+    if (data.userId === context.userId && data.role === "admin" && !data.grant) {
       throw new Error("You cannot remove your own admin role.");
     }
-    if (data.makeAdmin) {
+    if (data.grant) {
       const { error } = await supabaseAdmin
         .from("user_roles")
-        .upsert({ user_id: data.userId, role: "admin" }, { onConflict: "user_id,role" });
+        .upsert({ user_id: data.userId, role: data.role }, { onConflict: "user_id,role" });
       if (error) throw new Error(error.message);
+      if (data.role === "agent" && data.agentId) {
+        const { error: linkErr } = await supabaseAdmin
+          .from("agents" as never)
+          .update({ user_id: data.userId } as never)
+          .eq("id", data.agentId);
+        if (linkErr) throw new Error(linkErr.message);
+      }
     } else {
       const { error } = await supabaseAdmin
         .from("user_roles")
         .delete()
         .eq("user_id", data.userId)
-        .eq("role", "admin");
+        .eq("role", data.role);
       if (error) throw new Error(error.message);
+      if (data.role === "agent") {
+        await supabaseAdmin
+          .from("agents" as never)
+          .update({ user_id: null } as never)
+          .eq("user_id", data.userId);
+      }
     }
     return { ok: true };
   });
+
+// ---------- AGENT ENDPOINTS ----------
+
+async function getMyAgent(userId: string): Promise<{ id: string; department: string; full_name: string } | null> {
+  const { data } = await supabaseAdmin
+    .from("agents" as never)
+    .select("id, department, full_name")
+    .eq("user_id", userId)
+    .maybeSingle() as unknown as { data: { id: string; department: string; full_name: string } | null };
+  return data;
+}
+
+export const agentListMyTickets = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const me = await getMyAgent(context.userId);
+    if (!me) throw new Error("You are not linked to an agent profile.");
+    const { data, error } = await supabaseAdmin
+      .from("tickets")
+      .select("*, app_users(name, email, department), agents:assigned_agent_id(id, full_name, department, status)")
+      .eq("assigned_agent_id", me.id)
+      .order("created_at", { ascending: false });
+    if (error) throw new Error(error.message);
+    return { agent: me, tickets: data ?? [] };
+  });
+
+export const agentGetConversation = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({ ticketId: z.string().uuid() }).parse(input))
+  .handler(async ({ data, context }) => {
+    const me = await getMyAgent(context.userId);
+    if (!me) throw new Error("Forbidden");
+    // ensure ticket is assigned to this agent
+    const { data: t } = await supabaseAdmin
+      .from("tickets").select("assigned_agent_id").eq("id", data.ticketId).maybeSingle();
+    if (!t || (t as { assigned_agent_id: string | null }).assigned_agent_id !== me.id) {
+      throw new Error("Forbidden");
+    }
+    const { data: rows, error } = await supabaseAdmin
+      .from("conversations").select("*").eq("ticket_id", data.ticketId).order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    return rows ?? [];
+  });
+
+export const agentRespondToTicket = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({
+      ticketId: z.string().uuid(),
+      response: z.string().trim().min(1).max(5000).optional(),
+      status: z.enum(["open", "in_progress", "escalated", "resolved"]).optional(),
+      admin_notes: z.string().trim().max(5000).nullable().optional(),
+    }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    const me = await getMyAgent(context.userId);
+    if (!me) throw new Error("Forbidden");
+    const { data: prev } = await supabaseAdmin
+      .from("tickets").select("assigned_agent_id, status").eq("id", data.ticketId).maybeSingle();
+    const p = prev as { assigned_agent_id: string | null; status: string } | null;
+    if (!p || p.assigned_agent_id !== me.id) throw new Error("Forbidden");
+
+    const patch: Record<string, unknown> = {};
+    if (data.status) patch.status = data.status;
+    if (data.admin_notes !== undefined) patch.admin_notes = data.admin_notes;
+    if (Object.keys(patch).length) {
+      const { error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", data.ticketId);
+      if (error) throw new Error(error.message);
+    }
+    if (data.response) {
+      const { error } = await supabaseAdmin.from("conversations").insert({
+        ticket_id: data.ticketId, role: "assistant", message: data.response,
+      });
+      if (error) throw new Error(error.message);
+    }
+    if (data.status === "resolved" && p.status !== "resolved") {
+      await bumpAgentWorkload(me.id, -1);
+    }
+    return { ok: true };
+  });
+
+
 
 export const adminGetConversation = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
