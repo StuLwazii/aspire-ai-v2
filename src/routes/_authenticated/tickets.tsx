@@ -5,6 +5,7 @@ import { adminListTickets } from "@/lib/tickets.functions";
 import { AdminTicketTable } from "@/components/admin/AdminTicketTable";
 import { useRealtimeTickets } from "@/hooks/useRealtimeTickets";
 import type { AdminTicket } from "@/components/admin/types";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 export const Route = createFileRoute("/_authenticated/tickets")({
   component: TicketsPage,
@@ -13,10 +14,11 @@ export const Route = createFileRoute("/_authenticated/tickets")({
 
 function TicketsPage() {
   const fetchTickets = useServerFn(adminListTickets);
+  const sessionStatus = useSupabaseSessionStatus();
   const { data: tickets = [], refetch, isLoading } = useQuery({
     queryKey: ["admin-tickets"],
     queryFn: () => fetchTickets() as Promise<AdminTicket[]>,
-    enabled: typeof window !== "undefined",
+    enabled: sessionStatus === "authenticated",
   });
   useRealtimeTickets(() => refetch());
 
