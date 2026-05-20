@@ -33,6 +33,7 @@ function UsersPage() {
   const { data: users = [], refetch, isLoading } = useQuery({
     queryKey: ["admin-users"],
     queryFn: () => list() as Promise<Row[]>,
+    enabled: typeof window !== "undefined",
   });
   const [busyId, setBusyId] = useState<string | null>(null);
   const [agentDeptFor, setAgentDeptFor] = useState<string | null>(null);
