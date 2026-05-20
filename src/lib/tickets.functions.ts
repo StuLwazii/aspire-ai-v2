@@ -176,6 +176,12 @@ async function bumpAgentWorkload(agentId: string, delta: number) {
 
 // ---------- PUBLIC ----------
 
+function verifyAccessCode(code: string) {
+  const expected = process.env.COMPANY_ACCESS_CODE;
+  if (!expected) throw new Error("Access control is not configured. Please contact your administrator.");
+  if (code !== expected) throw new Error("Invalid access code. Please contact your administrator.");
+}
+
 export const startConversation = createServerFn({ method: "POST" })
   .inputValidator((input: unknown) =>
     z.object({
@@ -183,6 +189,7 @@ export const startConversation = createServerFn({ method: "POST" })
       email: z.string().trim().email().max(255),
       department: z.enum(DEPARTMENT_OPTIONS),
       message: z.string().trim().min(5).max(2000),
+      accessCode: z.string().min(1).max(200),
     }).parse(input),
   )
   .handler(async ({ data }) => {
