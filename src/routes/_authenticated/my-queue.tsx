@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Inbox, Send, CheckCircle2, AlertCircle } from "lucide-react";
 import { useRealtimeTickets } from "@/hooks/useRealtimeTickets";
 import type { AdminTicket } from "@/components/admin/types";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 export const Route = createFileRoute("/_authenticated/my-queue")({
   component: MyQueuePage,
@@ -42,11 +43,12 @@ function MyQueuePage() {
   const listFn = useServerFn(agentListMyTickets);
   const convoFn = useServerFn(agentGetConversation);
   const respondFn = useServerFn(agentRespondToTicket);
+  const sessionStatus = useSupabaseSessionStatus();
 
   const { data, refetch, isLoading } = useQuery({
     queryKey: ["agent-my-queue"],
     queryFn: () => listFn() as Promise<{ agent: { id: string; full_name: string; department: string }; tickets: AdminTicket[] }>,
-    enabled: typeof window !== "undefined",
+    enabled: sessionStatus === "authenticated",
   });
 
   useRealtimeTickets(() => refetch());
@@ -62,6 +64,7 @@ function MyQueuePage() {
   const selected = tickets.find((t) => t.id === selectedId) ?? null;
 
   useEffect(() => {
+    if (sessionStatus !== "authenticated") return;
     if (!selectedId) {
       setConversation([]);
       setNotes("");
@@ -71,7 +74,7 @@ function MyQueuePage() {
       .then((rows) => setConversation(rows as Msg[]))
       .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to load conversation"));
     setNotes(selected?.admin_notes ?? "");
-  }, [selectedId, convoFn, selected?.admin_notes]);
+  }, [selectedId, convoFn, selected?.admin_notes, sessionStatus]);
 
   const open = tickets.filter((t) => t.status !== "resolved");
   const resolved = tickets.filter((t) => t.status === "resolved");
