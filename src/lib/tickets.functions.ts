@@ -33,53 +33,85 @@ async function callAI(body: unknown) {
   return res.json();
 }
 
-async function classifyAndDecide(message: string): Promise<{
+type TriageItem = {
   category: Category;
   resolution: "self_service" | "escalated";
   reason: string;
   priority: "low" | "medium" | "high" | "critical";
   title: string;
-}> {
+  excerpt: string;
+};
+
+async function triageMultiple(message: string): Promise<TriageItem[]> {
   const json = await callAI({
     model: "google/gemini-2.5-flash",
     messages: [
       {
         role: "system",
         content:
-          "You triage help-desk tickets. (1) Classify into exactly one of: HR, IT, Finance, Operations. (2) Decide SELF_SERVICE (user can resolve themselves with clear steps) vs ESCALATED (requires a human to act). (3) Assign a priority (low/medium/high/critical). (4) Give a one-sentence reason. (5) Produce a concise 3-7 word ticket title summarising the issue. Call the tool.",
+          "You triage help-desk submissions. A single submission may contain MULTIPLE distinct issues belonging to DIFFERENT departments (HR, IT, Finance, Operations). Split it into one item per department. For each item: category (exactly one of HR/IT/Finance/Operations); resolution SELF_SERVICE or ESCALATED; priority low/medium/high/critical; one-sentence reason; concise 3-7 word title; and excerpt — the verbatim portion of the user's message describing THIS issue. Only split when issues clearly belong to different departments; otherwise return a single item. Call the tool.",
       },
       { role: "user", content: message },
     ],
     tools: [{
       type: "function",
       function: {
-        name: "triage_ticket",
-        description: "Classify the ticket and decide whether it is self-service or needs human escalation",
+        name: "triage_tickets",
+        description: "Split the submission into per-department tickets.",
         parameters: {
           type: "object",
           properties: {
-            category: { type: "string", enum: CATEGORIES as unknown as string[] },
-            resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
-            priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
-            reason: { type: "string" },
-            title: { type: "string", description: "Concise 3-7 word ticket title" },
+            items: {
+              type: "array",
+              minItems: 1,
+              items: {
+                type: "object",
+                properties: {
+                  category: { type: "string", enum: CATEGORIES as unknown as string[] },
+                  resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
+                  priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+                  reason: { type: "string" },
+                  title: { type: "string" },
+                  excerpt: { type: "string" },
+                },
+                required: ["category", "resolution", "priority", "reason", "title", "excerpt"],
+                additionalProperties: false,
+              },
+            },
           },
-          required: ["category", "resolution", "priority", "reason", "title"],
+          required: ["items"],
           additionalProperties: false,
         },
       },
     }],
-    tool_choice: { type: "function", function: { name: "triage_ticket" } },
+    tool_choice: { type: "function", function: { name: "triage_tickets" } },
   });
   const call = json.choices?.[0]?.message?.tool_calls?.[0];
   const args = call?.function?.arguments ? JSON.parse(call.function.arguments) : {};
-  return {
-    category: CATEGORIES.includes(args.category) ? args.category : "Operations",
-    resolution: args.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
-    reason: typeof args.reason === "string" ? args.reason : "Triage decision recorded.",
-    priority: ["low", "medium", "high", "critical"].includes(args.priority) ? args.priority : "medium",
-    title: typeof args.title === "string" && args.title.trim() ? args.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
-  };
+  const raw: unknown[] = Array.isArray(args.items) ? args.items : [];
+  const parsed: TriageItem[] = raw.map((r) => {
+    const o = r as Record<string, unknown>;
+    return {
+      category: CATEGORIES.includes(o.category as Category) ? (o.category as Category) : "Operations",
+      resolution: o.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
+      reason: typeof o.reason === "string" ? o.reason : "Triage decision recorded.",
+      priority: ["low", "medium", "high", "critical"].includes(o.priority as string) ? (o.priority as TriageItem["priority"]) : "medium",
+      title: typeof o.title === "string" && o.title.trim() ? o.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
+      excerpt: typeof o.excerpt === "string" && o.excerpt.trim() ? o.excerpt.trim() : message,
+    };
+  });
+  // Merge any duplicates by department
+  const byCat = new Map<Category, TriageItem>();
+  for (const it of parsed) {
+    const ex = byCat.get(it.category);
+    if (ex) ex.excerpt = `${ex.excerpt}\n${it.excerpt}`;
+    else byCat.set(it.category, { ...it });
+  }
+  const result = Array.from(byCat.values());
+  return result.length > 0 ? result : [{
+    category: "Operations", resolution: "escalated", reason: "Default routing", priority: "medium",
+    title: message.slice(0, 60) + (message.length > 60 ? "…" : ""), excerpt: message,
+  }];
 }
 
 
@@ -159,65 +191,97 @@ export const startConversation = createServerFn({ method: "POST" })
       .select().single();
     if (ue) throw new Error(ue.message);
 
-    const triage = await classifyAndDecide(data.message);
-    let assistantText = "";
-    let assignedAgent: { id: string; full_name: string } | null = null;
-    let status: typeof STATUSES[number] = "open";
+    const items = await triageMultiple(data.message);
+    const multi = items.length > 1;
 
-    if (triage.resolution === "self_service") {
-      const steps = await generateSelfServiceSteps(data.message, triage.category);
-      assistantText = `${steps}\n\nDoes this resolve your issue?`;
-    } else {
-      assignedAgent = await pickAgent(triage.category);
-      status = "escalated";
-      const eta = RESPONSE_TIME[triage.category];
-      if (assignedAgent) {
-        assistantText =
-`Your request requires hands-on assistance from our ${triage.category} team. Your ticket has been assigned to **${assignedAgent.full_name}** and they will contact you shortly.
+    type TicketRow = {
+      id: string; user_id: string; message: string; title: string | null; category: string;
+      ai_response: string | null; status: string; resolution_type: string;
+      escalation_reason: string | null; priority: string; assigned_agent_id: string | null;
+      created_at: string; updated_at: string; admin_notes: string | null;
+      rating: string | null; classification_method: string; resolved_by_user: boolean;
+    };
+    type Created = {
+      ticket: TicketRow;
+      item: TriageItem;
+      assistantText: string;
+      assignedAgent: { id: string; full_name: string } | null;
+    };
+    const created: Created[] = [];
 
-🏢 Department: ${triage.category}
-👤 Assigned to: ${assignedAgent.full_name}
-⏱️ Expected response: ${eta}
+    for (const item of items) {
+      let assistantText = "";
+      let assignedAgent: { id: string; full_name: string } | null = null;
+      let status: typeof STATUSES[number] = "open";
+      const sourceText = multi ? item.excerpt : data.message;
 
-You will be notified as soon as your ticket is picked up.`;
+      if (item.resolution === "self_service") {
+        const steps = await generateSelfServiceSteps(sourceText, item.category);
+        assistantText = `**${item.category} — ${item.title}**\n\n${steps}\n\nDoes this resolve your issue?`;
       } else {
-        assistantText =
-`Your request needs hands-on assistance from our ${triage.category} team. Our team is currently at capacity — you are in the queue and will be attended to shortly. Expected response: ${eta}.`;
+        assignedAgent = await pickAgent(item.category);
+        status = "escalated";
+        const eta = RESPONSE_TIME[item.category];
+        assistantText = assignedAgent
+          ? `**${item.category} — ${item.title}**\n\nYour request requires hands-on assistance from our ${item.category} team. Assigned to **${assignedAgent.full_name}**.\n\n🏢 Department: ${item.category}\n👤 Assigned to: ${assignedAgent.full_name}\n⏱️ Expected response: ${eta}`
+          : `**${item.category} — ${item.title}**\n\nYour request needs hands-on assistance from our ${item.category} team. Our team is at capacity — you are in the queue. Expected response: ${eta}.`;
       }
+
+      const { data: ticket, error: te } = await supabaseAdmin
+        .from("tickets").insert({
+          user_id: user.id,
+          message: sourceText,
+          title: item.title,
+          category: item.category,
+          ai_response: assistantText,
+          status,
+          resolution_type: item.resolution,
+          escalation_reason: item.reason,
+          priority: item.priority,
+          assigned_agent_id: assignedAgent?.id ?? null,
+        } as never).select().single();
+      if (te) throw new Error(te.message);
+      if (assignedAgent) await bumpAgentWorkload(assignedAgent.id, +1);
+      created.push({ ticket: ticket as Created["ticket"], item, assistantText, assignedAgent });
     }
 
-    const ticketInsert: Record<string, unknown> = {
-      user_id: user.id,
-      message: data.message,
-      title: triage.title,
-      category: triage.category,
-      ai_response: assistantText,
-      status,
-      resolution_type: triage.resolution,
-      escalation_reason: triage.reason,
-      priority: triage.priority,
-      assigned_agent_id: assignedAgent?.id ?? null,
-    };
-    const { data: ticket, error: te } = await supabaseAdmin
-      .from("tickets").insert(ticketInsert as never).select().single();
-    if (te) throw new Error(te.message);
+    // Primary ticket = first one; conversation thread anchors here.
+    const primary = created[0];
+    const combinedAssistant = multi
+      ? `I detected **${created.length} separate issues** in your message and split them into individual tickets so each department can handle their part:\n\n` +
+        created.map((c, i) => `**${i + 1}. ${c.item.category} — ${c.item.title}** (priority: ${c.item.priority})\n${c.assistantText.split("\n").slice(2).join("\n")}`).join("\n\n---\n\n")
+      : primary.assistantText;
 
-
-    if (assignedAgent) await bumpAgentWorkload(assignedAgent.id, +1);
-
+    // Seed conversations: original user message on primary, then combined assistant reply.
     const { data: msgs, error: me } = await supabaseAdmin
       .from("conversations").insert([
-        { ticket_id: ticket.id, role: "user", message: data.message },
-        { ticket_id: ticket.id, role: "assistant", message: assistantText },
+        { ticket_id: primary.ticket.id, role: "user", message: data.message },
+        { ticket_id: primary.ticket.id, role: "assistant", message: combinedAssistant },
       ]).select();
     if (me) throw new Error(me.message);
 
+    // For sibling tickets, seed their own conversation with the excerpt + their assistant reply
+    for (const c of created.slice(1)) {
+      await supabaseAdmin.from("conversations").insert([
+        { ticket_id: c.ticket.id, role: "user", message: c.item.excerpt },
+        { ticket_id: c.ticket.id, role: "assistant", message: c.assistantText },
+      ]);
+    }
+
     return {
-      ticket,
+      ticket: primary.ticket,
       user,
       messages: msgs ?? [],
-      assignedAgentName: assignedAgent?.full_name ?? null,
-      expectedResponse: triage.resolution === "escalated" ? RESPONSE_TIME[triage.category] : null,
+      assignedAgentName: primary.assignedAgent?.full_name ?? null,
+      expectedResponse: primary.item.resolution === "escalated" ? RESPONSE_TIME[primary.item.category] : null,
+      relatedTickets: created.map((c) => ({
+        id: c.ticket.id,
+        category: c.item.category,
+        title: c.item.title,
+        priority: c.item.priority,
+        resolution: c.item.resolution,
+        assignedAgentName: c.assignedAgent?.full_name ?? null,
+      })),
     };
   });
 
