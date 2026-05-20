@@ -168,6 +168,7 @@ export function ChatPortal() {
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input id="email" type="email" required maxLength={255} value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
           <div className="space-y-2">
             <Label htmlFor="access-code">Company access code</Label>
             <Input
