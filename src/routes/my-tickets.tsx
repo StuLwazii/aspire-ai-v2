@@ -47,14 +47,22 @@ function MyTicketsPage() {
   const get = useServerFn(userGetTicket);
 
   const [email, setEmail] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [submittedAccessCode, setSubmittedAccessCode] = useState<string | null>(null);
   const [tickets, setTickets] = useState<TicketRow[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState<{ ticket: TicketRow; messages: Msg[]; agent: string | null } | null>(null);
 
   const load = async (e?: React.FormEvent) => {
     e?.preventDefault();
+    setAccessCodeError(null);
     if (!email.trim()) return;
+    if (!accessCode.trim()) {
+      setAccessCodeError("Invalid access code. Please contact your administrator.");
+      return;
+    }
     setBusy(true);
     try {
       const res = await list({ data: { email: email.trim() } });
