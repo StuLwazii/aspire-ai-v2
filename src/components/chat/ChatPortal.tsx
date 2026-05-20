@@ -27,6 +27,8 @@ export function ChatPortal() {
   const [stage, setStage] = useState<"form" | "chat">("form");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
   const [department, setDepartment] = useState<(typeof DEPARTMENT_OPTIONS)[number]>("Engineering");
   const [first, setFirst] = useState("");
   const [ticket, setTicket] = useState<Ticket | null>(null);
