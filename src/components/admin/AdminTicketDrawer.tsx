@@ -11,6 +11,7 @@ import { CategoryBadge } from "@/components/CategoryBadge";
 import { ChatBubble } from "@/components/chat/ChatBubble";
 import { toast } from "sonner";
 import { Save, Trash2, ThumbsUp, ThumbsDown, Bot, User as UserIcon, AlertCircle } from "lucide-react";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 
 type Status = Database["public"]["Enums"]["ticket_status"];
 const STATUSES: { id: Status; label: string }[] = [
@@ -32,6 +33,8 @@ export function AdminTicketDrawer({
   const update = useServerFn(adminUpdateTicket);
   const del = useServerFn(adminDeleteTicket);
   const listAgents = useServerFn(adminListAgents);
+  const sessionStatus = useSupabaseSessionStatus();
+  const canCallProtectedFns = sessionStatus === "authenticated";
 
   const [response, setResponse] = useState("");
   const [notes, setNotes] = useState("");
@@ -44,13 +47,13 @@ export function AdminTicketDrawer({
   const { data: conversation = [] } = useQuery({
     queryKey: ["conversation", ticket?.id],
     queryFn: () => getConv({ data: { ticketId: ticket!.id } }),
-    enabled: !!ticket,
+    enabled: !!ticket && canCallProtectedFns,
   });
 
   const { data: agents = [] } = useQuery({
     queryKey: ["agents-for-drawer"],
     queryFn: () => listAgents() as Promise<Agent[]>,
-    enabled: !!ticket,
+    enabled: !!ticket && canCallProtectedFns,
   });
 
   if (!ticket) return null;
