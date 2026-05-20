@@ -17,9 +17,20 @@ export const Route = createFileRoute("/_authenticated")({
 
 function useIsAdmin() {
   const [state, setState] = useState<"loading" | "ok" | "denied">("loading");
+  const navigate = useNavigate();
   useEffect(() => {
-    getMyRole().then((r) => setState(r.isAdmin ? "ok" : "denied")).catch(() => setState("denied"));
-  }, []);
+    getMyRole()
+      .then((r) => setState(r.isAdmin ? "ok" : "denied"))
+      .catch(async (err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.toLowerCase().includes("unauthorized")) {
+          await supabase.auth.signOut().catch(() => {});
+          navigate({ to: "/admin/login" });
+          return;
+        }
+        setState("denied");
+      });
+  }, [navigate]);
   return state;
 }
 
