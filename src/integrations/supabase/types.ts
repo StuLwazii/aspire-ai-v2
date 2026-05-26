@@ -115,11 +115,13 @@ export type Database = {
           classification_method: string
           created_at: string
           escalation_reason: string | null
+          first_response_at: string | null
           id: string
           message: string
           priority: Database["public"]["Enums"]["ticket_priority"]
           rating: Database["public"]["Enums"]["ticket_rating"] | null
           resolution_type: Database["public"]["Enums"]["resolution_type"]
+          resolved_at: string | null
           resolved_by_user: boolean
           status: Database["public"]["Enums"]["ticket_status"]
           title: string | null
@@ -134,11 +136,13 @@ export type Database = {
           classification_method?: string
           created_at?: string
           escalation_reason?: string | null
+          first_response_at?: string | null
           id?: string
           message: string
           priority?: Database["public"]["Enums"]["ticket_priority"]
           rating?: Database["public"]["Enums"]["ticket_rating"] | null
           resolution_type?: Database["public"]["Enums"]["resolution_type"]
+          resolved_at?: string | null
           resolved_by_user?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
           title?: string | null
@@ -153,11 +157,13 @@ export type Database = {
           classification_method?: string
           created_at?: string
           escalation_reason?: string | null
+          first_response_at?: string | null
           id?: string
           message?: string
           priority?: Database["public"]["Enums"]["ticket_priority"]
           rating?: Database["public"]["Enums"]["ticket_rating"] | null
           resolution_type?: Database["public"]["Enums"]["resolution_type"]
+          resolved_at?: string | null
           resolved_by_user?: boolean
           status?: Database["public"]["Enums"]["ticket_status"]
           title?: string | null

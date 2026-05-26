@@ -19,6 +19,7 @@ import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedTicketsRouteImport } from './routes/_authenticated/tickets'
 import { Route as AuthenticatedMyQueueRouteImport } from './routes/_authenticated/my-queue'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
 
 const MyTicketsRoute = MyTicketsRouteImport.update({
@@ -70,6 +71,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedAnalyticsRoute = AuthenticatedAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAgentsRoute = AuthenticatedAgentsRouteImport.update({
   id: '/agents',
   path: '/agents',
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/my-tickets': typeof MyTicketsRoute
   '/agents': typeof AuthenticatedAgentsRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
   '/tickets': typeof AuthenticatedTicketsRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/my-tickets': typeof MyTicketsRoute
   '/agents': typeof AuthenticatedAgentsRoute
+  '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
   '/tickets': typeof AuthenticatedTicketsRoute
@@ -108,6 +116,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/my-tickets': typeof MyTicketsRoute
   '/_authenticated/agents': typeof AuthenticatedAgentsRoute
+  '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/my-queue': typeof AuthenticatedMyQueueRoute
   '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/my-tickets'
     | '/agents'
+    | '/analytics'
     | '/dashboard'
     | '/my-queue'
     | '/tickets'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/my-tickets'
     | '/agents'
+    | '/analytics'
     | '/dashboard'
     | '/my-queue'
     | '/tickets'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/my-tickets'
     | '/_authenticated/agents'
+    | '/_authenticated/analytics'
     | '/_authenticated/dashboard'
     | '/_authenticated/my-queue'
     | '/_authenticated/tickets'
@@ -235,6 +247,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/analytics': {
+      id: '/_authenticated/analytics'
+      path: '/analytics'
+      fullPath: '/analytics'
+      preLoaderRoute: typeof AuthenticatedAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/agents': {
       id: '/_authenticated/agents'
       path: '/agents'
@@ -247,6 +266,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAgentsRoute: typeof AuthenticatedAgentsRoute
+  AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedMyQueueRoute: typeof AuthenticatedMyQueueRoute
   AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
@@ -255,6 +275,7 @@ interface AuthenticatedRouteChildren {
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAgentsRoute: AuthenticatedAgentsRoute,
+  AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedMyQueueRoute: AuthenticatedMyQueueRoute,
   AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
