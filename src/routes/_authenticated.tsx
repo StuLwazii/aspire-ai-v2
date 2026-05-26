@@ -125,6 +125,7 @@ function AuthLayout() {
         </div>
         <nav className="flex-1 p-3 space-y-1">
           {isAdmin && navItem("/dashboard", "Dashboard", LayoutDashboard)}
+          {isAdmin && navItem("/analytics", "Analytics", BarChart3)}
           {isAdmin && navItem("/tickets", "Tickets", Ticket)}
           {isAdmin && navItem("/agents", "Agents", Users)}
           {isAdmin && navItem("/users", "Users & Admins", ShieldCheck)}
