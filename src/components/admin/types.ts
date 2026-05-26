@@ -5,6 +5,8 @@ export type AdminTicket = Ticket & {
   escalation_reason?: string | null;
   assigned_agent_id?: string | null;
   priority?: "low" | "medium" | "high" | "critical";
+  first_response_at?: string | null;
+  resolved_at?: string | null;
   app_users: { name: string; email: string; department: string } | null;
   agents?: { id: string; full_name: string; department: string; status: string } | null;
 };
