@@ -74,6 +74,51 @@ export type Database = {
         }
         Relationships: []
       }
+      business_reports: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          department: string
+          executive_summary: string
+          html: string
+          id: string
+          kpis: Json
+          performance_analysis: string
+          period_end: string
+          period_start: string
+          recommendations: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          department?: string
+          executive_summary: string
+          html: string
+          id?: string
+          kpis?: Json
+          performance_analysis: string
+          period_end: string
+          period_start: string
+          recommendations: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          department?: string
+          executive_summary?: string
+          html?: string
+          id?: string
+          kpis?: Json
+          performance_analysis?: string
+          period_end?: string
+          period_start?: string
+          recommendations?: string
+          title?: string
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           created_at: string
@@ -105,6 +150,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      report_schedules: {
+        Row: {
+          active: boolean
+          cadence: string
+          created_at: string
+          created_by: string | null
+          department: string
+          id: string
+          last_run_at: string | null
+          name: string
+          next_run_at: string | null
+          recipients: string[]
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          cadence?: string
+          created_at?: string
+          created_by?: string | null
+          department?: string
+          id?: string
+          last_run_at?: string | null
+          name: string
+          next_run_at?: string | null
+          recipients?: string[]
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          cadence?: string
+          created_at?: string
+          created_by?: string | null
+          department?: string
+          id?: string
+          last_run_at?: string | null
+          name?: string
+          next_run_at?: string | null
+          recipients?: string[]
+          updated_at?: string
+        }
+        Relationships: []
       }
       tickets: {
         Row: {
