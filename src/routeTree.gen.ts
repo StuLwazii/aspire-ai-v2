@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedTicketsRouteImport } from './routes/_authenticated/tickets'
+import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
 import { Route as AuthenticatedMyQueueRouteImport } from './routes/_authenticated/my-queue'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
@@ -61,6 +62,11 @@ const AuthenticatedTicketsRoute = AuthenticatedTicketsRouteImport.update({
   path: '/tickets',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedMyQueueRoute = AuthenticatedMyQueueRouteImport.update({
   id: '/my-queue',
   path: '/my-queue',
@@ -91,6 +97,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
+  '/reports': typeof AuthenticatedReportsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/admin/login': typeof AdminLoginRoute
@@ -104,6 +111,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
+  '/reports': typeof AuthenticatedReportsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/admin/login': typeof AdminLoginRoute
@@ -119,6 +127,7 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/my-queue': typeof AuthenticatedMyQueueRoute
+  '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/admin/login': typeof AdminLoginRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/dashboard'
     | '/my-queue'
+    | '/reports'
     | '/tickets'
     | '/users'
     | '/admin/login'
@@ -147,6 +157,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/dashboard'
     | '/my-queue'
+    | '/reports'
     | '/tickets'
     | '/users'
     | '/admin/login'
@@ -161,6 +172,7 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/dashboard'
     | '/_authenticated/my-queue'
+    | '/_authenticated/reports'
     | '/_authenticated/tickets'
     | '/_authenticated/users'
     | '/admin/login'
@@ -233,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTicketsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/reports': {
+      id: '/_authenticated/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthenticatedReportsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/my-queue': {
       id: '/_authenticated/my-queue'
       path: '/my-queue'
@@ -269,6 +288,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedMyQueueRoute: typeof AuthenticatedMyQueueRoute
+  AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
   AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
 }
@@ -278,6 +298,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedMyQueueRoute: AuthenticatedMyQueueRoute,
+  AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
   AuthenticatedUsersRoute: AuthenticatedUsersRoute,
 }
@@ -297,3 +318,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
