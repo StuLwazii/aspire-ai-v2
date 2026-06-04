@@ -268,11 +268,14 @@ export function AnalyticsDashboard({ tickets }: { tickets: AdminTicket[] }) {
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="text-sm font-semibold">Open vs resolved over time</div>
           <div className="flex gap-1">
-            {(["day", "week", "month"] as Granularity[]).map((g) => (
-              <Button key={g} size="sm" variant={grain === g ? "default" : "outline"} onClick={() => setGrain(g)}>
-                {g[0].toUpperCase() + g.slice(1)}ly
-              </Button>
-            ))}
+            {(["day", "week", "month"] as Granularity[]).map((g) => {
+              const label = g === "day" ? "Daily" : g === "week" ? "Weekly" : "Monthly";
+              return (
+                <Button key={g} size="sm" variant={grain === g ? "default" : "outline"} onClick={() => setGrain(g)}>
+                  {label}
+                </Button>
+              );
+            })}
           </div>
         </div>
         <div className="h-72">
