@@ -106,7 +106,7 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
   }
   const result = Array.from(byCat.values());
   return result.length > 0 ? result : [{
-    category: "Operations", resolution: "escalated", reason: "Default routing", priority: "medium",
+    category: "Operations", resolution: "escalated", reason: "Default routing",
     title: message.slice(0, 60) + (message.length > 60 ? "…" : ""), excerpt: message,
   }];
 }
