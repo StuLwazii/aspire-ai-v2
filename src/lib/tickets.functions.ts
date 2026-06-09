@@ -253,7 +253,7 @@ export const startConversation = createServerFn({ method: "POST" })
     const primary = created[0];
     const combinedAssistant = multi
       ? `I detected **${created.length} separate issues** in your message and split them into individual tickets so each department can handle their part:\n\n` +
-        created.map((c, i) => `**${i + 1}. ${c.item.category} — ${c.item.title}** (priority: ${c.item.priority})\n${c.assistantText.split("\n").slice(2).join("\n")}`).join("\n\n---\n\n")
+        created.map((c, i) => `**${i + 1}. ${c.item.category} — ${c.item.title}**\n${c.assistantText.split("\n").slice(2).join("\n")}`).join("\n\n---\n\n")
       : primary.assistantText;
 
     // Seed conversations: original user message on primary, then combined assistant reply.
