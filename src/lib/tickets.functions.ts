@@ -242,7 +242,6 @@ export const startConversation = createServerFn({ method: "POST" })
           status,
           resolution_type: item.resolution,
           escalation_reason: item.reason,
-          priority: item.priority,
           assigned_agent_id: assignedAgent?.id ?? null,
         } as never).select().single();
       if (te) throw new Error(te.message);
