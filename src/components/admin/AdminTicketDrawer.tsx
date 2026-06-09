@@ -97,6 +97,18 @@ export function AdminTicketDrawer({
     finally { setBusy(false); }
   };
 
+  const setPriority = async (priority: Priority) => {
+    setBusy(true);
+    try {
+      const row = await update({ data: { id: ticket.id, priority } });
+      onUpdated({ ...ticket, ...(row as object) } as AdminTicket); onChanged();
+      toast.success(`Priority set to ${priority}`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy(false); }
+  };
+
+
+
   const overrideSelfService = async () => {
     setBusy(true);
     try {
