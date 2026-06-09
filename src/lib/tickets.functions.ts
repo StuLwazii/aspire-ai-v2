@@ -37,7 +37,6 @@ type TriageItem = {
   category: Category;
   resolution: "self_service" | "escalated";
   reason: string;
-  priority: "low" | "medium" | "high" | "critical";
   title: string;
   excerpt: string;
 };
