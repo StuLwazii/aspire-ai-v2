@@ -211,6 +211,18 @@ export function AdminTicketDrawer({
         </section>
 
         <section className="space-y-2">
+          <h3 className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Priority (admin-assigned)</h3>
+          <div className="flex gap-2 flex-wrap">
+            {PRIORITIES.map((p) => (
+              <Button key={p.id} size="sm" variant={ticket.priority === p.id ? "default" : "outline"}
+                onClick={() => setPriority(p.id)} disabled={busy || ticket.priority === p.id}>
+                {p.label}
+              </Button>
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-2">
           <h3 className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Status</h3>
           <div className="flex gap-2 flex-wrap">
             {STATUSES.map((s) => (
@@ -221,6 +233,7 @@ export function AdminTicketDrawer({
             ))}
           </div>
         </section>
+
 
         <div className="flex justify-between gap-2 pt-2 border-t">
           <Button variant="destructive" size="sm" onClick={remove} disabled={busy}>
