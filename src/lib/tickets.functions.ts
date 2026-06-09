@@ -68,12 +68,11 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
                 properties: {
                   category: { type: "string", enum: CATEGORIES as unknown as string[] },
                   resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
-                  priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
                   reason: { type: "string" },
                   title: { type: "string" },
                   excerpt: { type: "string" },
                 },
-                required: ["category", "resolution", "priority", "reason", "title", "excerpt"],
+                required: ["category", "resolution", "reason", "title", "excerpt"],
                 additionalProperties: false,
               },
             },
