@@ -282,7 +282,6 @@ export const startConversation = createServerFn({ method: "POST" })
         id: c.ticket.id,
         category: c.item.category,
         title: c.item.title,
-        priority: c.item.priority,
         resolution: c.item.resolution,
         assignedAgentName: c.assignedAgent?.full_name ?? null,
       })),
