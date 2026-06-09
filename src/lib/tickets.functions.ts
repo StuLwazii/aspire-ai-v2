@@ -93,7 +93,6 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
       category: CATEGORIES.includes(o.category as Category) ? (o.category as Category) : "Operations",
       resolution: o.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
       reason: typeof o.reason === "string" ? o.reason : "Triage decision recorded.",
-      priority: ["low", "medium", "high", "critical"].includes(o.priority as string) ? (o.priority as TriageItem["priority"]) : "medium",
       title: typeof o.title === "string" && o.title.trim() ? o.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
       excerpt: typeof o.excerpt === "string" && o.excerpt.trim() ? o.excerpt.trim() : message,
     };
