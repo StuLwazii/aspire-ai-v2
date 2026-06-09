@@ -21,6 +21,13 @@ const STATUSES: { id: Status; label: string }[] = [
   { id: "resolved", label: "Resolved" },
 ];
 
+type Priority = Database["public"]["Enums"]["ticket_priority"];
+const PRIORITIES: { id: Priority; label: string }[] = [
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+];
+
 export function AdminTicketDrawer({
   ticket, onClose, onChanged, onUpdated,
 }: {
@@ -89,6 +96,18 @@ export function AdminTicketDrawer({
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
     finally { setBusy(false); }
   };
+
+  const setPriority = async (priority: Priority) => {
+    setBusy(true);
+    try {
+      const row = await update({ data: { id: ticket.id, priority } });
+      onUpdated({ ...ticket, ...(row as object) } as AdminTicket); onChanged();
+      toast.success(`Priority set to ${priority}`);
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
+    finally { setBusy(false); }
+  };
+
+
 
   const overrideSelfService = async () => {
     setBusy(true);
@@ -192,6 +211,18 @@ export function AdminTicketDrawer({
         </section>
 
         <section className="space-y-2">
+          <h3 className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Priority (admin-assigned)</h3>
+          <div className="flex gap-2 flex-wrap">
+            {PRIORITIES.map((p) => (
+              <Button key={p.id} size="sm" variant={ticket.priority === p.id ? "default" : "outline"}
+                onClick={() => setPriority(p.id)} disabled={busy || ticket.priority === p.id}>
+                {p.label}
+              </Button>
+            ))}
+          </div>
+        </section>
+
+        <section className="space-y-2">
           <h3 className="text-xs uppercase tracking-wide text-muted-foreground font-semibold">Status</h3>
           <div className="flex gap-2 flex-wrap">
             {STATUSES.map((s) => (
@@ -202,6 +233,7 @@ export function AdminTicketDrawer({
             ))}
           </div>
         </section>
+
 
         <div className="flex justify-between gap-2 pt-2 border-t">
           <Button variant="destructive" size="sm" onClick={remove} disabled={busy}>

@@ -37,7 +37,6 @@ type TriageItem = {
   category: Category;
   resolution: "self_service" | "escalated";
   reason: string;
-  priority: "low" | "medium" | "high" | "critical";
   title: string;
   excerpt: string;
 };
@@ -49,7 +48,7 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
       {
         role: "system",
         content:
-          "You triage help-desk submissions. A single submission may contain MULTIPLE distinct issues belonging to DIFFERENT departments (HR, IT, Finance, Operations). Split it into one item per department. For each item: category (exactly one of HR/IT/Finance/Operations); resolution SELF_SERVICE or ESCALATED; priority low/medium/high/critical; one-sentence reason; concise 3-7 word title; and excerpt — the verbatim portion of the user's message describing THIS issue. Only split when issues clearly belong to different departments; otherwise return a single item. Call the tool.",
+          "You triage help-desk submissions. A single submission may contain MULTIPLE distinct issues belonging to DIFFERENT departments (HR, IT, Finance, Operations). Split it into one item per department. For each item: category (exactly one of HR/IT/Finance/Operations); resolution SELF_SERVICE or ESCALATED; one-sentence reason; concise 3-7 word title; and excerpt — the verbatim portion of the user's message describing THIS issue. Only split when issues clearly belong to different departments; otherwise return a single item. Call the tool.",
       },
       { role: "user", content: message },
     ],
@@ -69,12 +68,11 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
                 properties: {
                   category: { type: "string", enum: CATEGORIES as unknown as string[] },
                   resolution: { type: "string", enum: ["SELF_SERVICE", "ESCALATED"] },
-                  priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
                   reason: { type: "string" },
                   title: { type: "string" },
                   excerpt: { type: "string" },
                 },
-                required: ["category", "resolution", "priority", "reason", "title", "excerpt"],
+                required: ["category", "resolution", "reason", "title", "excerpt"],
                 additionalProperties: false,
               },
             },
@@ -95,7 +93,6 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
       category: CATEGORIES.includes(o.category as Category) ? (o.category as Category) : "Operations",
       resolution: o.resolution === "SELF_SERVICE" ? "self_service" : "escalated",
       reason: typeof o.reason === "string" ? o.reason : "Triage decision recorded.",
-      priority: ["low", "medium", "high", "critical"].includes(o.priority as string) ? (o.priority as TriageItem["priority"]) : "medium",
       title: typeof o.title === "string" && o.title.trim() ? o.title.trim().slice(0, 120) : (message.slice(0, 60) + (message.length > 60 ? "…" : "")),
       excerpt: typeof o.excerpt === "string" && o.excerpt.trim() ? o.excerpt.trim() : message,
     };
@@ -109,7 +106,7 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
   }
   const result = Array.from(byCat.values());
   return result.length > 0 ? result : [{
-    category: "Operations", resolution: "escalated", reason: "Default routing", priority: "medium",
+    category: "Operations", resolution: "escalated", reason: "Default routing",
     title: message.slice(0, 60) + (message.length > 60 ? "…" : ""), excerpt: message,
   }];
 }
@@ -245,7 +242,6 @@ export const startConversation = createServerFn({ method: "POST" })
           status,
           resolution_type: item.resolution,
           escalation_reason: item.reason,
-          priority: item.priority,
           assigned_agent_id: assignedAgent?.id ?? null,
         } as never).select().single();
       if (te) throw new Error(te.message);
@@ -257,7 +253,7 @@ export const startConversation = createServerFn({ method: "POST" })
     const primary = created[0];
     const combinedAssistant = multi
       ? `I detected **${created.length} separate issues** in your message and split them into individual tickets so each department can handle their part:\n\n` +
-        created.map((c, i) => `**${i + 1}. ${c.item.category} — ${c.item.title}** (priority: ${c.item.priority})\n${c.assistantText.split("\n").slice(2).join("\n")}`).join("\n\n---\n\n")
+        created.map((c, i) => `**${i + 1}. ${c.item.category} — ${c.item.title}**\n${c.assistantText.split("\n").slice(2).join("\n")}`).join("\n\n---\n\n")
       : primary.assistantText;
 
     // Seed conversations: original user message on primary, then combined assistant reply.
@@ -286,7 +282,6 @@ export const startConversation = createServerFn({ method: "POST" })
         id: c.ticket.id,
         category: c.item.category,
         title: c.item.title,
-        priority: c.item.priority,
         resolution: c.item.resolution,
         assignedAgentName: c.assignedAgent?.full_name ?? null,
       })),
