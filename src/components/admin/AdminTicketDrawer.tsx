@@ -21,6 +21,13 @@ const STATUSES: { id: Status; label: string }[] = [
   { id: "resolved", label: "Resolved" },
 ];
 
+type Priority = Database["public"]["Enums"]["ticket_priority"];
+const PRIORITIES: { id: Priority; label: string }[] = [
+  { id: "low", label: "Low" },
+  { id: "medium", label: "Medium" },
+  { id: "high", label: "High" },
+];
+
 export function AdminTicketDrawer({
   ticket, onClose, onChanged, onUpdated,
 }: {
