@@ -48,7 +48,7 @@ async function triageMultiple(message: string): Promise<TriageItem[]> {
       {
         role: "system",
         content:
-          "You triage help-desk submissions. A single submission may contain MULTIPLE distinct issues belonging to DIFFERENT departments (HR, IT, Finance, Operations). Split it into one item per department. For each item: category (exactly one of HR/IT/Finance/Operations); resolution SELF_SERVICE or ESCALATED; priority low/medium/high/critical; one-sentence reason; concise 3-7 word title; and excerpt — the verbatim portion of the user's message describing THIS issue. Only split when issues clearly belong to different departments; otherwise return a single item. Call the tool.",
+          "You triage help-desk submissions. A single submission may contain MULTIPLE distinct issues belonging to DIFFERENT departments (HR, IT, Finance, Operations). Split it into one item per department. For each item: category (exactly one of HR/IT/Finance/Operations); resolution SELF_SERVICE or ESCALATED; one-sentence reason; concise 3-7 word title; and excerpt — the verbatim portion of the user's message describing THIS issue. Only split when issues clearly belong to different departments; otherwise return a single item. Call the tool.",
       },
       { role: "user", content: message },
     ],
