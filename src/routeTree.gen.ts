@@ -17,6 +17,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
 import { Route as AuthenticatedTicketsRouteImport } from './routes/_authenticated/tickets'
+import { Route as AuthenticatedPredictionsRouteImport } from './routes/_authenticated/predictions'
 import { Route as AuthenticatedMyQueueRouteImport } from './routes/_authenticated/my-queue'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
@@ -61,6 +62,12 @@ const AuthenticatedTicketsRoute = AuthenticatedTicketsRouteImport.update({
   path: '/tickets',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPredictionsRoute =
+  AuthenticatedPredictionsRouteImport.update({
+    id: '/predictions',
+    path: '/predictions',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedMyQueueRoute = AuthenticatedMyQueueRouteImport.update({
   id: '/my-queue',
   path: '/my-queue',
@@ -91,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
+  '/predictions': typeof AuthenticatedPredictionsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/admin/login': typeof AdminLoginRoute
@@ -104,6 +112,7 @@ export interface FileRoutesByTo {
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
+  '/predictions': typeof AuthenticatedPredictionsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/admin/login': typeof AdminLoginRoute
@@ -119,6 +128,7 @@ export interface FileRoutesById {
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/my-queue': typeof AuthenticatedMyQueueRoute
+  '/_authenticated/predictions': typeof AuthenticatedPredictionsRoute
   '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/admin/login': typeof AdminLoginRoute
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/dashboard'
     | '/my-queue'
+    | '/predictions'
     | '/tickets'
     | '/users'
     | '/admin/login'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/analytics'
     | '/dashboard'
     | '/my-queue'
+    | '/predictions'
     | '/tickets'
     | '/users'
     | '/admin/login'
@@ -161,6 +173,7 @@ export interface FileRouteTypes {
     | '/_authenticated/analytics'
     | '/_authenticated/dashboard'
     | '/_authenticated/my-queue'
+    | '/_authenticated/predictions'
     | '/_authenticated/tickets'
     | '/_authenticated/users'
     | '/admin/login'
@@ -233,6 +246,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTicketsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/predictions': {
+      id: '/_authenticated/predictions'
+      path: '/predictions'
+      fullPath: '/predictions'
+      preLoaderRoute: typeof AuthenticatedPredictionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/my-queue': {
       id: '/_authenticated/my-queue'
       path: '/my-queue'
@@ -269,6 +289,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedMyQueueRoute: typeof AuthenticatedMyQueueRoute
+  AuthenticatedPredictionsRoute: typeof AuthenticatedPredictionsRoute
   AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
   AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
 }
@@ -278,6 +299,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedMyQueueRoute: AuthenticatedMyQueueRoute,
+  AuthenticatedPredictionsRoute: AuthenticatedPredictionsRoute,
   AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
   AuthenticatedUsersRoute: AuthenticatedUsersRoute,
 }
