@@ -79,8 +79,13 @@ function MyQueuePage() {
     setNotes(selected?.admin_notes ?? "");
   }, [selectedId, convoFn, selected?.admin_notes, sessionStatus]);
 
-  const open = sortTicketsByPriority(tickets.filter((t) => t.status !== "resolved"));
-  const resolved = sortTicketsByPriority(tickets.filter((t) => t.status === "resolved"));
+  const applySort = (rows: AdminTicket[]) => {
+    if (sort === "priority") return sortTicketsByPriority(rows);
+    if (sort === "newest") return [...rows].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    return [...rows].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  };
+  const open = applySort(tickets.filter((t) => t.status !== "resolved"));
+  const resolved = applySort(tickets.filter((t) => t.status === "resolved"));
 
   const send = async (status?: "in_progress" | "resolved") => {
     if (!selectedId) return;
