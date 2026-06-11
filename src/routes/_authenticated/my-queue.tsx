@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { toast } from "sonner";
-import { Inbox, Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { Inbox, Send, CheckCircle2, AlertCircle, ArrowUpDown } from "lucide-react";
 import { useRealtimeTickets } from "@/hooks/useRealtimeTickets";
 import type { AdminTicket } from "@/components/admin/types";
 import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
@@ -25,6 +25,7 @@ export const Route = createFileRoute("/_authenticated/my-queue")({
 });
 
 type Msg = { id: string; ticket_id: string; role: string; message: string; created_at: string };
+type Sort = "priority" | "newest" | "oldest";
 
 const STATUS_STYLE: Record<string, string> = {
   open: "bg-accent/15 text-accent",
@@ -59,6 +60,7 @@ function MyQueuePage() {
   const [reply, setReply] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sort, setSort] = useState<Sort>("priority");
 
   const tickets = data?.tickets ?? [];
   const agent = data?.agent;
@@ -77,8 +79,13 @@ function MyQueuePage() {
     setNotes(selected?.admin_notes ?? "");
   }, [selectedId, convoFn, selected?.admin_notes, sessionStatus]);
 
-  const open = sortTicketsByPriority(tickets.filter((t) => t.status !== "resolved"));
-  const resolved = sortTicketsByPriority(tickets.filter((t) => t.status === "resolved"));
+  const applySort = (rows: AdminTicket[]) => {
+    if (sort === "priority") return sortTicketsByPriority(rows);
+    if (sort === "newest") return [...rows].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
+    return [...rows].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
+  };
+  const open = applySort(tickets.filter((t) => t.status !== "resolved"));
+  const resolved = applySort(tickets.filter((t) => t.status === "resolved"));
 
   const send = async (status?: "in_progress" | "resolved") => {
     if (!selectedId) return;
@@ -117,7 +124,16 @@ function MyQueuePage() {
         <Card className="p-0 overflow-hidden h-fit">
           <div className="px-3 py-2 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground bg-secondary/40 flex items-center justify-between">
             <span className="flex items-center gap-1.5"><Inbox className="h-3.5 w-3.5" /> Active ({open.length})</span>
-            <span className="text-[10px] opacity-70">{resolved.length} resolved</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSort(sort === "priority" ? "newest" : sort === "newest" ? "oldest" : "priority")}
+                className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                <span className="text-[10px]">{sort === "priority" ? "Priority" : sort === "newest" ? "Newest" : "Oldest"}</span>
+              </button>
+              <span className="text-[10px] opacity-70">{resolved.length} resolved</span>
+            </div>
           </div>
           <div className="max-h-[70vh] overflow-y-auto divide-y">
             {isLoading ? (
