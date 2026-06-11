@@ -124,7 +124,16 @@ function MyQueuePage() {
         <Card className="p-0 overflow-hidden h-fit">
           <div className="px-3 py-2 border-b text-xs font-semibold uppercase tracking-wide text-muted-foreground bg-secondary/40 flex items-center justify-between">
             <span className="flex items-center gap-1.5"><Inbox className="h-3.5 w-3.5" /> Active ({open.length})</span>
-            <span className="text-[10px] opacity-70">{resolved.length} resolved</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setSort(sort === "priority" ? "newest" : sort === "newest" ? "oldest" : "priority")}
+                className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                <span className="text-[10px]">{sort === "priority" ? "Priority" : sort === "newest" ? "Newest" : "Oldest"}</span>
+              </button>
+              <span className="text-[10px] opacity-70">{resolved.length} resolved</span>
+            </div>
           </div>
           <div className="max-h-[70vh] overflow-y-auto divide-y">
             {isLoading ? (
