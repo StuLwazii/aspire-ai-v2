@@ -6,6 +6,7 @@ import { CategoryBadge } from "@/components/CategoryBadge";
 import { AdminTicketDrawer } from "./AdminTicketDrawer";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ThumbsUp, ThumbsDown, ArrowUpDown, Bot, User as UserIcon, AlertCircle } from "lucide-react";
+import { sortTicketsByPriority } from "@/lib/ticket-sort";
 
 const CATS = ["All", "HR", "IT", "Finance", "Operations"] as const;
 const STATUSES = ["All", "open", "escalated", "in_progress", "resolved"] as const;
@@ -24,7 +25,7 @@ const RES_STYLE: Record<string, { cls: string; label: string; Icon: typeof Bot }
   pending:      { cls: "bg-muted text-muted-foreground", label: "Pending", Icon: AlertCircle },
 };
 
-type Sort = "newest" | "oldest" | "unresolved";
+type Sort = "priority" | "newest" | "oldest" | "unresolved";
 
 export function AdminTicketTable({
   tickets, loading, onChanged,
@@ -36,7 +37,7 @@ export function AdminTicketTable({
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [q, setQ] = useState("");
-  const [sort, setSort] = useState<Sort>("newest");
+  const [sort, setSort] = useState<Sort>("priority");
   const [selected, setSelected] = useState<AdminTicket | null>(null);
 
   const departments = useMemo(() => {
@@ -62,6 +63,7 @@ export function AdminTicketTable({
       }
       return true;
     });
+    if (sort === "priority") rows = sortTicketsByPriority(rows);
     if (sort === "newest") rows = [...rows].sort((a, b) => +new Date(b.created_at) - +new Date(a.created_at));
     if (sort === "oldest") rows = [...rows].sort((a, b) => +new Date(a.created_at) - +new Date(b.created_at));
     if (sort === "unresolved") rows = [...rows].sort((a, b) => (a.status === "resolved" ? 1 : 0) - (b.status === "resolved" ? 1 : 0));
@@ -100,8 +102,8 @@ export function AdminTicketTable({
 
       <div className="flex items-center justify-between px-3 py-2 border-b text-xs text-muted-foreground">
         <span>{filtered.length} of {tickets.length} tickets</span>
-        <button onClick={() => setSort(sort === "newest" ? "oldest" : sort === "oldest" ? "unresolved" : "newest")} className="inline-flex items-center gap-1 hover:text-foreground">
-          <ArrowUpDown className="h-3 w-3" /> {sort === "newest" ? "Newest first" : sort === "oldest" ? "Oldest first" : "Unresolved first"}
+        <button onClick={() => setSort(sort === "priority" ? "newest" : sort === "newest" ? "oldest" : sort === "oldest" ? "unresolved" : "priority")} className="inline-flex items-center gap-1 hover:text-foreground">
+          <ArrowUpDown className="h-3 w-3" /> {sort === "priority" ? "Priority (high → low)" : sort === "newest" ? "Newest first" : sort === "oldest" ? "Oldest first" : "Unresolved first"}
         </button>
       </div>
 
