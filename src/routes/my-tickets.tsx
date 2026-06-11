@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Ticket as TicketIcon, RefreshCw, MessageCircle, User as UserIcon, Bot } from "lucide-react";
 import { toast } from "sonner";
+import { sortTicketsByPriority } from "@/lib/ticket-sort";
 
 export const Route = createFileRoute("/my-tickets")({
   component: MyTicketsPage,
@@ -66,7 +67,7 @@ function MyTicketsPage() {
     setBusy(true);
     try {
       const res = await list({ data: { email: email.trim(), accessCode: accessCode.trim() } });
-      setTickets(res.tickets as TicketRow[]);
+      setTickets(sortTicketsByPriority(res.tickets as TicketRow[]));
       setSubmittedEmail(email.trim());
       setSubmittedAccessCode(accessCode.trim());
       setActive(null);

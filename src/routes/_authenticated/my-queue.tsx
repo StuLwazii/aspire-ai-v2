@@ -17,6 +17,7 @@ import { Inbox, Send, CheckCircle2, AlertCircle } from "lucide-react";
 import { useRealtimeTickets } from "@/hooks/useRealtimeTickets";
 import type { AdminTicket } from "@/components/admin/types";
 import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
+import { sortTicketsByPriority } from "@/lib/ticket-sort";
 
 export const Route = createFileRoute("/_authenticated/my-queue")({
   component: MyQueuePage,
@@ -76,8 +77,8 @@ function MyQueuePage() {
     setNotes(selected?.admin_notes ?? "");
   }, [selectedId, convoFn, selected?.admin_notes, sessionStatus]);
 
-  const open = tickets.filter((t) => t.status !== "resolved");
-  const resolved = tickets.filter((t) => t.status === "resolved");
+  const open = sortTicketsByPriority(tickets.filter((t) => t.status !== "resolved"));
+  const resolved = sortTicketsByPriority(tickets.filter((t) => t.status === "resolved"));
 
   const send = async (status?: "in_progress" | "resolved") => {
     if (!selectedId) return;
