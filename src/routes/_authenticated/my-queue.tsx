@@ -60,7 +60,6 @@ function MyQueuePage() {
   const [reply, setReply] = useState("");
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
-  type Sort = "priority" | "newest" | "oldest";
   const [sort, setSort] = useState<Sort>("priority");
 
   const tickets = data?.tickets ?? [];
