@@ -25,6 +25,7 @@ export const Route = createFileRoute("/_authenticated/my-queue")({
 });
 
 type Msg = { id: string; ticket_id: string; role: string; message: string; created_at: string };
+type Sort = "priority" | "newest" | "oldest";
 
 const STATUS_STYLE: Record<string, string> = {
   open: "bg-accent/15 text-accent",
