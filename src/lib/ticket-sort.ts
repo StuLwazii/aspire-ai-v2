@@ -1,5 +1,3 @@
-import type { AdminTicket } from "@/components/admin/types";
-
 // High at top, Medium middle, Low at bottom. Critical ranks above High.
 // Tickets with no priority assigned sort after Low.
 const PRIORITY_RANK: Record<string, number> = {
@@ -18,7 +16,7 @@ export function priorityRank(p?: string | null): number {
  * Default ticket ordering across the app: priority first (High → Low),
  * then oldest-first within the same priority.
  */
-export function sortTicketsByPriority<T extends Pick<AdminTicket, "priority" | "created_at">>(
+export function sortTicketsByPriority<T extends { priority?: string | null; created_at: string }>(
   tickets: T[],
 ): T[] {
   return [...tickets].sort((a, b) => {
