@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { CategoryBadge } from "@/components/CategoryBadge";
 import { toast } from "sonner";
-import { Inbox, Send, CheckCircle2, AlertCircle } from "lucide-react";
+import { Inbox, Send, CheckCircle2, AlertCircle, ArrowUpDown } from "lucide-react";
 import { useRealtimeTickets } from "@/hooks/useRealtimeTickets";
 import type { AdminTicket } from "@/components/admin/types";
 import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
