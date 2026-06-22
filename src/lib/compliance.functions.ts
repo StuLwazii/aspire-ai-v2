@@ -217,7 +217,14 @@ export const reviewComplianceLog = createServerFn({ method: "POST" })
     if (!isAdmin.data) throw new Error("Forbidden");
 
     const statusMap = { approve: "Approved", reject: "Rejected", escalate: "Escalated" } as const;
-    const patch: Record<string, unknown> = {
+    const patch: {
+      compliance_status: string;
+      review_notes: string | null;
+      reviewed_by: string;
+      reviewed_at: string;
+      risk_score?: number;
+      risk_level?: string;
+    } = {
       compliance_status: statusMap[data.action],
       review_notes: data.notes ?? null,
       reviewed_by: userId,
