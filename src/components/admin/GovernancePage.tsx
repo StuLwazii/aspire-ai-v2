@@ -216,8 +216,7 @@ export default function GovernancePage() {
             <Card className="p-4">
               <div className="font-medium mb-2 text-sm">Risk Trend Over Time</div>
               <ClientOnly fallback={<div className="h-64" />}>
-                {() => (
-                  <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={260}>
                     <LineChart data={dash?.riskTrend ?? []}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="date" fontSize={11} />
@@ -226,14 +225,13 @@ export default function GovernancePage() {
                       <Line type="monotone" dataKey="avg" stroke="#ef4444" strokeWidth={2} dot={false} name="Avg risk" />
                     </LineChart>
                   </ResponsiveContainer>
-                )}
+                
               </ClientOnly>
             </Card>
             <Card className="p-4">
               <div className="font-medium mb-2 text-sm">Compliance Status Distribution</div>
               <ClientOnly fallback={<div className="h-64" />}>
-                {() => (
-                  <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={260}>
                     <PieChart>
                       <Pie data={dash?.statusDistribution ?? []} dataKey="value" nameKey="name" outerRadius={90} label>
                         {(dash?.statusDistribution ?? []).map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
@@ -242,14 +240,13 @@ export default function GovernancePage() {
                       <Tooltip />
                     </PieChart>
                   </ResponsiveContainer>
-                )}
+                
               </ClientOnly>
             </Card>
             <Card className="p-4">
               <div className="font-medium mb-2 text-sm">Bias Categories Detected</div>
               <ClientOnly fallback={<div className="h-64" />}>
-                {() => (
-                  <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={dash?.biasCategories ?? []}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="name" fontSize={10} />
@@ -258,14 +255,13 @@ export default function GovernancePage() {
                       <Bar dataKey="value" fill="#8b5cf6" />
                     </BarChart>
                   </ResponsiveContainer>
-                )}
+                
               </ClientOnly>
             </Card>
             <Card className="p-4">
               <div className="font-medium mb-2 text-sm">Monthly Analytics</div>
               <ClientOnly fallback={<div className="h-64" />}>
-                {() => (
-                  <ResponsiveContainer width="100%" height={260}>
+                <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={dash?.monthly ?? []}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                       <XAxis dataKey="month" fontSize={11} />
@@ -276,7 +272,7 @@ export default function GovernancePage() {
                       <Bar dataKey="flagged" fill="#ef4444" name="Flagged" />
                     </BarChart>
                   </ResponsiveContainer>
-                )}
+                
               </ClientOnly>
             </Card>
           </div>
