@@ -119,6 +119,60 @@ export type Database = {
         }
         Relationships: []
       }
+      compliance_logs: {
+        Row: {
+          compliance_status: string
+          created_at: string
+          id: string
+          identified_risks: Json
+          prompt: string
+          response: string
+          review_notes: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          risk_level: string
+          risk_score: number
+          source: string
+          transparency_notes: Json
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          compliance_status?: string
+          created_at?: string
+          id?: string
+          identified_risks?: Json
+          prompt: string
+          response: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          risk_level?: string
+          risk_score?: number
+          source?: string
+          transparency_notes?: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          compliance_status?: string
+          created_at?: string
+          id?: string
+          identified_risks?: Json
+          prompt?: string
+          response?: string
+          review_notes?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          risk_level?: string
+          risk_score?: number
+          source?: string
+          transparency_notes?: Json
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       conversations: {
         Row: {
           created_at: string
