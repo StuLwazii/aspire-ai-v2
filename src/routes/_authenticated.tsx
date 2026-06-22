@@ -130,6 +130,7 @@ function AuthLayout() {
           {isAdmin && navItem("/tickets", "Tickets", Ticket)}
           {isAdmin && navItem("/agents", "Agents", Users)}
           {isAdmin && navItem("/users", "Users & Admins", ShieldCheck)}
+          {isAdmin && navItem("/governance", "AI Governance", ShieldAlert)}
           {isAgent && navItem("/my-queue", "My queue", Inbox)}
         </nav>
         <div className="p-3 border-t border-sidebar-border space-y-1">
