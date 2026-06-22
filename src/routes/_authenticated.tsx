@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyRole } from "@/lib/tickets.functions";
-import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck, Inbox, Moon, Sun, BarChart3, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck, Inbox, Moon, Sun, BarChart3, TrendingUp, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useTheme } from "@/components/theme-provider";
