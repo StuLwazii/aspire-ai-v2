@@ -7,6 +7,7 @@ import {
   complianceDashboard,
   reviewComplianceLog,
   complianceReport,
+  adminBackfillTicketCompliance,
 } from "@/lib/compliance.functions";
 import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 import { Card } from "@/components/ui/card";
