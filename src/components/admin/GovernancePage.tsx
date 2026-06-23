@@ -99,7 +99,18 @@ export default function GovernancePage() {
   const evalFn = useServerFn(evaluateCompliance);
   const reviewFn = useServerFn(reviewComplianceLog);
   const reportFn = useServerFn(complianceReport);
+  const backfillFn = useServerFn(adminBackfillTicketCompliance);
   const qc = useQueryClient();
+
+  const backfillMut = useMutation({
+    mutationFn: (force: boolean) => backfillFn({ data: { force } }),
+    onSuccess: (r: { processed: number; evaluated: number; skipped: number; failed: number }) => {
+      toast.success(`Evaluated ${r.evaluated} ticket(s) • skipped ${r.skipped} • failed ${r.failed}`);
+      qc.invalidateQueries({ queryKey: ["compliance-dash"] });
+      qc.invalidateQueries({ queryKey: ["compliance-logs"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const dashQ = useQuery({ queryKey: ["compliance-dash"], queryFn: () => dashFn(), enabled });
   const logsQ = useQuery({ queryKey: ["compliance-logs"], queryFn: () => logsFn({ data: {} }), enabled });
