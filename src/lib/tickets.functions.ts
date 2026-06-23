@@ -280,6 +280,11 @@ export const startConversation = createServerFn({ method: "POST" })
       ]);
     }
 
+    // Governance: evaluate every ticket created (fire-and-forget).
+    for (const c of created) {
+      evaluateTicketAndLog(c.ticket.id, true).catch(() => undefined);
+    }
+
     return {
       ticket: primary.ticket,
       user,
