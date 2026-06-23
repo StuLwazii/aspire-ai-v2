@@ -95,8 +95,8 @@ export async function autoEvaluateAndLog(args: {
       response: args.response,
       risk_score: evalResult.riskScore,
       risk_level: evalResult.riskLevel,
-      identified_risks: evalResult.identifiedRisks,
-      transparency_notes: evalResult.transparencyNotes,
+      identified_risks: evalResult.identifiedRisks as never,
+      transparency_notes: evalResult.transparencyNotes as never,
       compliance_status: complianceStatus,
       source: args.source,
     });
