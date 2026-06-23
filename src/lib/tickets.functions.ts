@@ -265,6 +265,13 @@ export const startConversation = createServerFn({ method: "POST" })
       ]).select();
     if (me) throw new Error(me.message);
 
+    await autoEvaluateAndLog({
+      prompt: data.message,
+      response: combinedAssistant,
+      source: "chatbot_initial",
+      userId: user.id,
+    });
+
     // For sibling tickets, seed their own conversation with the excerpt + their assistant reply
     for (const c of created.slice(1)) {
       await supabaseAdmin.from("conversations").insert([
