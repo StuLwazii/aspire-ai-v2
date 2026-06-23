@@ -740,6 +740,9 @@ export const agentRespondToTicket = createServerFn({ method: "POST" })
     if (data.status === "resolved" && p.status !== "resolved") {
       await bumpAgentWorkload(me.id, -1);
     }
+    if (data.response) {
+      evaluateTicketAndLog(data.ticketId, true).catch(() => undefined);
+    }
     return { ok: true };
   });
 
