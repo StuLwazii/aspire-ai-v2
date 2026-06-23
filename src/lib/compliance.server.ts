@@ -105,3 +105,75 @@ export async function autoEvaluateAndLog(args: {
     console.error("[compliance] auto-evaluation failed", err instanceof Error ? err.message : err);
   }
 }
+
+/**
+ * Evaluate a ticket (initial message + full conversation history) and write a
+ * compliance_logs row tagged with `source = ticket:<id>`. Dedupes by source
+ * unless `force` is true. Fire-and-forget safe.
+ */
+export async function evaluateTicketAndLog(
+  ticketId: string,
+  force = false,
+): Promise<"evaluated" | "skipped" | "no-response"> {
+  try {
+    const source = `ticket:${ticketId}`;
+    if (!force) {
+      const { data: existing } = await supabaseAdmin
+        .from("compliance_logs")
+        .select("id")
+        .eq("source", source)
+        .limit(1)
+        .maybeSingle();
+      if (existing) return "skipped";
+    }
+    const { data: ticket } = await supabaseAdmin
+      .from("tickets")
+      .select("id, user_id, message, ai_response, title, category, priority, status")
+      .eq("id", ticketId)
+      .maybeSingle();
+    if (!ticket) return "skipped";
+    const { data: convs } = await supabaseAdmin
+      .from("conversations")
+      .select("role, message, created_at")
+      .eq("ticket_id", ticketId)
+      .order("created_at", { ascending: true });
+    const rows = (convs ?? []) as Array<{ role: string; message: string }>;
+    const userParts = rows.filter((c) => c.role === "user").map((c) => c.message);
+    const responseParts = rows
+      .filter((c) => c.role !== "user")
+      .map((c) => `[${c.role}] ${c.message}`);
+    const t = ticket as { id: string; user_id: string | null; message: string; ai_response: string | null; title: string | null; category: string; priority: string; status: string };
+    const promptHeader = `Ticket #${t.id.slice(0, 8)} — ${t.title ?? ""}\nCategory: ${t.category} | Priority: ${t.priority} | Status: ${t.status}`;
+    const promptBody = [t.message, ...userParts.filter((m) => m !== t.message)].join("\n\n");
+    const response = responseParts.length > 0 ? responseParts.join("\n\n") : (t.ai_response ?? "");
+    if (!response.trim()) return "no-response";
+
+    const evalResult = await evaluateWithAI(
+      `${promptHeader}\n\n${promptBody}`.slice(0, 8000),
+      response.slice(0, 12000),
+    );
+    const complianceStatus =
+      evalResult.riskLevel === "Critical" || evalResult.riskLevel === "High"
+        ? "Pending Review"
+        : "Approved";
+    const { error } = await supabaseAdmin.from("compliance_logs").insert({
+      user_id: t.user_id ?? null,
+      prompt: `${promptHeader}\n\n${promptBody}`,
+      response,
+      risk_score: evalResult.riskScore,
+      risk_level: evalResult.riskLevel,
+      identified_risks: evalResult.identifiedRisks as never,
+      transparency_notes: evalResult.transparencyNotes as never,
+      compliance_status: complianceStatus,
+      source,
+    });
+    if (error) {
+      console.error("[compliance] ticket insert failed", error.message);
+      return "skipped";
+    }
+    return "evaluated";
+  } catch (err) {
+    console.error("[compliance] ticket evaluation failed", err instanceof Error ? err.message : err);
+    return "skipped";
+  }
+}
