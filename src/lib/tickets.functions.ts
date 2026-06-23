@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { autoEvaluateAndLog } from "@/lib/compliance.server";
+import { autoEvaluateAndLog, evaluateTicketAndLog } from "@/lib/compliance.server";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
@@ -280,6 +280,11 @@ export const startConversation = createServerFn({ method: "POST" })
       ]);
     }
 
+    // Governance: evaluate every ticket created (fire-and-forget).
+    for (const c of created) {
+      evaluateTicketAndLog(c.ticket.id, true).catch(() => undefined);
+    }
+
     return {
       ticket: primary.ticket,
       user,
@@ -322,6 +327,8 @@ export const continueConversation = createServerFn({ method: "POST" })
       response: reply,
       source: "chatbot_followup",
     });
+    // Re-evaluate the full ticket so governance reflects the latest exchange.
+    evaluateTicketAndLog(ticket.id, true).catch(() => undefined);
     return { messages: msgs ?? [] };
   });
 
@@ -733,6 +740,9 @@ export const agentRespondToTicket = createServerFn({ method: "POST" })
     if (data.status === "resolved" && p.status !== "resolved") {
       await bumpAgentWorkload(me.id, -1);
     }
+    if (data.response) {
+      evaluateTicketAndLog(data.ticketId, true).catch(() => undefined);
+    }
     return { ok: true };
   });
 
@@ -781,6 +791,9 @@ export const adminUpdateTicket = createServerFn({ method: "POST" })
     }
     const { data: row, error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", id).select().single();
     if (error) throw new Error(error.message);
+    if (patch.ai_response !== undefined || patch.status !== undefined) {
+      evaluateTicketAndLog(id, true).catch(() => undefined);
+    }
     return row;
   });
 

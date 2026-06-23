@@ -7,6 +7,7 @@ import {
   complianceDashboard,
   reviewComplianceLog,
   complianceReport,
+  adminBackfillTicketCompliance,
 } from "@/lib/compliance.functions";
 import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 import { Card } from "@/components/ui/card";
@@ -98,7 +99,18 @@ export default function GovernancePage() {
   const evalFn = useServerFn(evaluateCompliance);
   const reviewFn = useServerFn(reviewComplianceLog);
   const reportFn = useServerFn(complianceReport);
+  const backfillFn = useServerFn(adminBackfillTicketCompliance);
   const qc = useQueryClient();
+
+  const backfillMut = useMutation({
+    mutationFn: (force: boolean) => backfillFn({ data: { force } }),
+    onSuccess: (r: { processed: number; evaluated: number; skipped: number; failed: number }) => {
+      toast.success(`Evaluated ${r.evaluated} ticket(s) • skipped ${r.skipped} • failed ${r.failed}`);
+      qc.invalidateQueries({ queryKey: ["compliance-dash"] });
+      qc.invalidateQueries({ queryKey: ["compliance-logs"] });
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
   const dashQ = useQuery({ queryKey: ["compliance-dash"], queryFn: () => dashFn(), enabled });
   const logsQ = useQuery({ queryKey: ["compliance-logs"], queryFn: () => logsFn({ data: {} }), enabled });
@@ -190,6 +202,16 @@ export default function GovernancePage() {
             {userViolationCounts.length} user(s) with 3+ high-risk violations
           </div>
         )}
+        <div className="flex items-center gap-2 ml-auto">
+          <Button size="sm" variant="outline" onClick={() => backfillMut.mutate(false)} disabled={backfillMut.isPending}>
+            {backfillMut.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1.5" />}
+            Evaluate new tickets
+          </Button>
+          <Button size="sm" onClick={() => backfillMut.mutate(true)} disabled={backfillMut.isPending}>
+            {backfillMut.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
+            Re-evaluate all tickets
+          </Button>
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
