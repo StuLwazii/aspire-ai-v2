@@ -327,6 +327,8 @@ export const continueConversation = createServerFn({ method: "POST" })
       response: reply,
       source: "chatbot_followup",
     });
+    // Re-evaluate the full ticket so governance reflects the latest exchange.
+    evaluateTicketAndLog(ticket.id, true).catch(() => undefined);
     return { messages: msgs ?? [] };
   });
 
