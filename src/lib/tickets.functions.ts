@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { autoEvaluateAndLog } from "@/lib/compliance.server";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
@@ -264,6 +265,13 @@ export const startConversation = createServerFn({ method: "POST" })
       ]).select();
     if (me) throw new Error(me.message);
 
+    await autoEvaluateAndLog({
+      prompt: data.message,
+      response: combinedAssistant,
+      source: "chatbot_initial",
+      userId: user.id,
+    });
+
     // For sibling tickets, seed their own conversation with the excerpt + their assistant reply
     for (const c of created.slice(1)) {
       await supabaseAdmin.from("conversations").insert([
@@ -309,6 +317,11 @@ export const continueConversation = createServerFn({ method: "POST" })
         { ticket_id: ticket.id, role: "assistant", message: reply },
       ]).select();
     if (me) throw new Error(me.message);
+    await autoEvaluateAndLog({
+      prompt: data.message,
+      response: reply,
+      source: "chatbot_followup",
+    });
     return { messages: msgs ?? [] };
   });
 
