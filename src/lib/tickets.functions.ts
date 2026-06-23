@@ -791,6 +791,9 @@ export const adminUpdateTicket = createServerFn({ method: "POST" })
     }
     const { data: row, error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", id).select().single();
     if (error) throw new Error(error.message);
+    if (patch.ai_response !== undefined || patch.status !== undefined) {
+      evaluateTicketAndLog(id, true).catch(() => undefined);
+    }
     return row;
   });
 
