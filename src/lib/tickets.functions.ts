@@ -317,6 +317,11 @@ export const continueConversation = createServerFn({ method: "POST" })
         { ticket_id: ticket.id, role: "assistant", message: reply },
       ]).select();
     if (me) throw new Error(me.message);
+    await autoEvaluateAndLog({
+      prompt: data.message,
+      response: reply,
+      source: "chatbot_followup",
+    });
     return { messages: msgs ?? [] };
   });
 
