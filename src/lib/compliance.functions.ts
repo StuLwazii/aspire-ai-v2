@@ -282,3 +282,35 @@ export const complianceReport = createServerFn({ method: "POST" })
       logs,
     };
   });
+
+const BackfillInput = z.object({
+  force: z.boolean().optional(),
+  limit: z.number().int().min(1).max(500).optional(),
+});
+
+export const adminBackfillTicketCompliance = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => BackfillInput.parse(d ?? {}))
+  .handler(async ({ data, context }) => {
+    const isAdmin = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });
+    if (!isAdmin.data) throw new Error("Forbidden");
+    const { evaluateTicketAndLog } = await import("@/lib/compliance.server");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: tickets, error } = await supabaseAdmin
+      .from("tickets")
+      .select("id")
+      .order("created_at", { ascending: false })
+      .limit(data.limit ?? 250);
+    if (error) throw error;
+    let evaluated = 0, skipped = 0, failed = 0;
+    for (const t of (tickets ?? []) as Array<{ id: string }>) {
+      try {
+        const res = await evaluateTicketAndLog(t.id, data.force ?? false);
+        if (res === "evaluated") evaluated++;
+        else skipped++;
+      } catch {
+        failed++;
+      }
+    }
+    return { processed: (tickets ?? []).length, evaluated, skipped, failed };
+  });
