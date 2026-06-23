@@ -202,6 +202,16 @@ export default function GovernancePage() {
             {userViolationCounts.length} user(s) with 3+ high-risk violations
           </div>
         )}
+        <div className="flex items-center gap-2 ml-auto">
+          <Button size="sm" variant="outline" onClick={() => backfillMut.mutate(false)} disabled={backfillMut.isPending}>
+            {backfillMut.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1.5" />}
+            Evaluate new tickets
+          </Button>
+          <Button size="sm" onClick={() => backfillMut.mutate(true)} disabled={backfillMut.isPending}>
+            {backfillMut.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
+            Re-evaluate all tickets
+          </Button>
+        </div>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
