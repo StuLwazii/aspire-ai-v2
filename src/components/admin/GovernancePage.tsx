@@ -354,28 +354,41 @@ export default function GovernancePage() {
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase text-muted-foreground border-b">
                   <tr>
-                    <th className="text-left py-2 px-2">Created</th>
-                    <th className="text-left py-2 px-2">Risk</th>
-                    <th className="text-left py-2 px-2">Score</th>
+                    <th className="text-left py-2 px-2">Timestamp</th>
+                    <th className="text-left py-2 px-2">Sender</th>
+                    <th className="text-left py-2 px-2">Ticket</th>
                     <th className="text-left py-2 px-2">Status</th>
-                    <th className="text-left py-2 px-2">Source</th>
-                    <th className="text-left py-2 px-2">Prompt</th>
+                    <th className="text-left py-2 px-2">Score</th>
+                    <th className="text-left py-2 px-2">Action</th>
+                    <th className="text-left py-2 px-2">Sentiment</th>
+                    <th className="text-left py-2 px-2">PII</th>
+                    <th className="text-left py-2 px-2">Message</th>
                     <th className="py-2 px-2"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((l) => (
-                    <tr key={l.id} className="border-b hover:bg-muted/30">
-                      <td className="py-2 px-2 text-xs whitespace-nowrap">{new Date(l.created_at).toLocaleString()}</td>
-                      <td className="py-2 px-2">{riskBadge(l.risk_level)}</td>
-                      <td className="py-2 px-2 font-mono text-xs">{l.risk_score}</td>
-                      <td className="py-2 px-2">{statusBadge(l.compliance_status)}</td>
-                      <td className="py-2 px-2 text-xs">{l.source}</td>
-                      <td className="py-2 px-2 max-w-md truncate">{l.prompt}</td>
-                      <td className="py-2 px-2 text-right">
-                        <Button size="sm" variant="outline" onClick={() => { setSelected(l); setReviewNotes(l.review_notes ?? ""); setOverride(""); }}>View</Button>
-                      </td>
-                    </tr>
+                  {filtered.map((l) => {
+                    const status = l.status_label
+                      ?? (l.risk_level === "Low" ? "Safe" : l.risk_level === "Medium" ? "Warning" : l.risk_level === "High" ? "High Risk" : "Critical");
+                    const pii = Array.isArray(l.pii_detected) ? l.pii_detected : [];
+                    return (
+                      <tr key={l.id} className="border-b hover:bg-muted/30">
+                        <td className="py-2 px-2 text-xs whitespace-nowrap">{new Date(l.created_at).toLocaleString()}</td>
+                        <td className="py-2 px-2 text-xs">{l.sender ?? "AI"}</td>
+                        <td className="py-2 px-2 font-mono text-[10px]">{l.ticket_id ? l.ticket_id.slice(0, 8) : "—"}</td>
+                        <td className="py-2 px-2">{riskBadge(status)}</td>
+                        <td className="py-2 px-2 font-mono text-xs">{l.risk_score}</td>
+                        <td className="py-2 px-2 text-xs">{l.action_taken ?? "Passed"}</td>
+                        <td className="py-2 px-2 text-xs">{l.sentiment ?? "—"}</td>
+                        <td className="py-2 px-2 text-xs">{pii.length > 0 ? <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">{pii.length}</Badge> : "—"}</td>
+                        <td className="py-2 px-2 max-w-md truncate">{l.message_preview ?? l.response ?? l.prompt ?? ""}</td>
+                        <td className="py-2 px-2 text-right">
+                          <Button size="sm" variant="outline" onClick={() => { setSelected(l); setReviewNotes(l.review_notes ?? ""); setOverride(""); }}>View</Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
                   ))}
                   {filtered.length === 0 && (
                     <tr><td colSpan={7} className="py-8 text-center text-muted-foreground text-sm">No logs found</td></tr>
