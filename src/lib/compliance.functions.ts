@@ -144,7 +144,7 @@ export const listComplianceLogs = createServerFn({ method: "POST" })
     let q = supabase.from("compliance_logs").select("*").order("created_at", { ascending: false }).limit(data.limit ?? 100);
     if (data.riskLevel) q = q.eq("risk_level", data.riskLevel);
     if (data.status) q = q.eq("compliance_status", data.status);
-    if (data.search) q = q.or(`prompt.ilike.%${data.search}%,response.ilike.%${data.search}%`);
+    if (data.search) q = q.or(`prompt.ilike.%${data.search}%,response.ilike.%${data.search}%,message_preview.ilike.%${data.search}%`);
     const { data: rows, error } = await q;
     if (error) throw error;
     return rows ?? [];
