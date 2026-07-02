@@ -777,18 +777,28 @@ export const agentRespondToTicket = createServerFn({ method: "POST" })
       const { error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", data.ticketId);
       if (error) throw new Error(error.message);
     }
+    let insertedRow: { id: string } | null = null;
     if (data.response) {
-      const { error } = await supabaseAdmin.from("conversations").insert({
+      const { data: inserted, error } = await supabaseAdmin.from("conversations").insert({
         ticket_id: data.ticketId, role: "assistant", message: data.response,
-      });
+      }).select("id").single();
       if (error) throw new Error(error.message);
+      insertedRow = inserted as { id: string };
     }
     if (data.status === "resolved" && p.status !== "resolved") {
       await bumpAgentWorkload(me.id, -1);
     }
     if (data.response) {
-      evaluateTicketAndLog(data.ticketId, true).catch(() => undefined);
+      evaluateMessageAndLog({
+        sender: "Admin",
+        message: data.response,
+        ticketId: data.ticketId,
+        conversationId: insertedRow?.id ?? null,
+        userId: context.userId,
+        source: "chat:admin",
+      }).catch(() => undefined);
     }
+
     return { ok: true };
   });
 
