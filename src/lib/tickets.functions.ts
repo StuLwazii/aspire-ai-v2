@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { evaluateMessageAndLog, evaluateTicketAndLog } from "@/lib/compliance.server";
+import { evaluateMessageAndLog } from "@/lib/compliance.server";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
