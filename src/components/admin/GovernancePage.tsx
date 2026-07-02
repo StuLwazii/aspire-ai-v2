@@ -173,7 +173,11 @@ export default function GovernancePage() {
     return logs.filter((l) => {
       if (filterLevel !== "all" && l.risk_level !== filterLevel) return false;
       if (filterStatus !== "all" && l.compliance_status !== filterStatus) return false;
-      if (search && !(l.prompt?.toLowerCase().includes(search.toLowerCase()) || l.response?.toLowerCase().includes(search.toLowerCase()))) return false;
+      if (search) {
+        const s = search.toLowerCase();
+        const hay = `${l.message_preview ?? ""} ${l.prompt ?? ""} ${l.response ?? ""} ${l.sender ?? ""}`.toLowerCase();
+        if (!hay.includes(s)) return false;
+      }
       return true;
     });
   }, [logs, filterLevel, filterStatus, search]);
