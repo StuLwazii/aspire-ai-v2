@@ -300,11 +300,21 @@ export const adminBackfillTicketCompliance = createServerFn({ method: "POST" })
       .from("tickets")
       .select("id")
       .order("created_at", { ascending: false })
-      .limit(data.limit ?? 250);
+      .limit(data.limit ?? 500);
     if (error) throw error;
     let evaluated = 0, skipped = 0, failed = 0;
     for (const t of (tickets ?? []) as Array<{ id: string }>) {
       try {
+        // When not forcing, skip tickets that already have any log rows.
+        if (!data.force) {
+          const { data: existing } = await supabaseAdmin
+            .from("compliance_logs")
+            .select("id")
+            .eq("ticket_id", t.id)
+            .limit(1)
+            .maybeSingle();
+          if (existing) { skipped++; continue; }
+        }
         const res = await evaluateTicketAndLog(t.id, data.force ?? false);
         if (res === "evaluated") evaluated++;
         else skipped++;
