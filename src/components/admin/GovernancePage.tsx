@@ -61,8 +61,11 @@ const PIE_COLORS = ["#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#3b82f6", "#ec4
 function riskBadge(level: string) {
   const map: Record<string, string> = {
     Low: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
+    Safe: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
     Medium: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+    Warning: "bg-amber-500/15 text-amber-600 border-amber-500/30",
     High: "bg-orange-500/15 text-orange-600 border-orange-500/30",
+    "High Risk": "bg-orange-500/15 text-orange-600 border-orange-500/30",
     Critical: "bg-red-500/15 text-red-600 border-red-500/30",
   };
   return <Badge variant="outline" className={map[level] ?? ""}>{level}</Badge>;
