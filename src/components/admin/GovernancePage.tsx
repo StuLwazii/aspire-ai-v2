@@ -500,16 +500,39 @@ export default function GovernancePage() {
           {selected && (
             <div className="space-y-3 text-sm">
               <div className="flex gap-2 flex-wrap items-center">
-                {riskBadge(selected.risk_level)} {statusBadge(selected.compliance_status)}
+                {riskBadge(selected.status_label ?? selected.risk_level)} {statusBadge(selected.compliance_status)}
                 <span className="text-xs text-muted-foreground">Score {selected.risk_score} · {selected.source}</span>
+                <span className="text-xs text-muted-foreground">Action: {selected.action_taken ?? "Passed"}</span>
               </div>
-              <div>
-                <div className="text-xs uppercase text-muted-foreground">Prompt</div>
-                <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30">{selected.prompt}</div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div><span className="text-muted-foreground">Sender:</span> {selected.sender ?? "AI"}</div>
+                <div><span className="text-muted-foreground">Sentiment:</span> {selected.sentiment ?? "—"}</div>
+                <div className="font-mono"><span className="text-muted-foreground font-sans">Ticket:</span> {selected.ticket_id ?? "—"}</div>
+                <div className="font-mono"><span className="text-muted-foreground font-sans">Conversation:</span> {selected.conversation_id ?? "—"}</div>
               </div>
+              {Array.isArray(selected.pii_detected) && selected.pii_detected.length > 0 && (
+                <div>
+                  <div className="text-xs uppercase text-muted-foreground">PII detected</div>
+                  <div className="flex gap-1 flex-wrap">{selected.pii_detected.map((p, i) => (
+                    <Badge key={i} variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">{p}</Badge>
+                  ))}</div>
+                </div>
+              )}
+              {selected.governance_explanation && (
+                <div>
+                  <div className="text-xs uppercase text-muted-foreground">Governance explanation</div>
+                  <div className="border rounded p-2 bg-muted/30 text-xs">{selected.governance_explanation}</div>
+                </div>
+              )}
+              {selected.prompt && (
+                <div>
+                  <div className="text-xs uppercase text-muted-foreground">Context</div>
+                  <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30 text-xs">{selected.prompt}</div>
+                </div>
+              )}
               <div>
-                <div className="text-xs uppercase text-muted-foreground">Response</div>
-                <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30">{selected.response}</div>
+                <div className="text-xs uppercase text-muted-foreground">Message</div>
+                <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30">{selected.message_preview ?? selected.response ?? ""}</div>
               </div>
               {selected.identified_risks?.length > 0 && (
                 <div>
