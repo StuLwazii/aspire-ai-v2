@@ -388,10 +388,8 @@ export default function GovernancePage() {
                       </tr>
                     );
                   })}
-
-                  ))}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} className="py-8 text-center text-muted-foreground text-sm">No logs found</td></tr>
+                    <tr><td colSpan={10} className="py-8 text-center text-muted-foreground text-sm">No logs found</td></tr>
                   )}
                 </tbody>
               </table>
