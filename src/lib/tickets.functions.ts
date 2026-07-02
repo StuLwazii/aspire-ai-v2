@@ -265,25 +265,56 @@ export const startConversation = createServerFn({ method: "POST" })
       ]).select();
     if (me) throw new Error(me.message);
 
-    await autoEvaluateAndLog({
-      prompt: data.message,
-      response: combinedAssistant,
-      source: "chatbot_initial",
+    // Governance: log the user message + AI reply as two individual entries.
+    const primaryMsgs = (msgs ?? []) as Array<{ id: string; role: string; message: string }>;
+    const primaryUserRow = primaryMsgs.find((m) => m.role === "user");
+    const primaryAssistantRow = primaryMsgs.find((m) => m.role === "assistant");
+    evaluateMessageAndLog({
+      sender: "User",
+      message: data.message,
+      ticketId: primary.ticket.id,
+      conversationId: primaryUserRow?.id ?? null,
       userId: user.id,
-    });
+      source: "chat:user",
+    }).catch(() => undefined);
+    evaluateMessageAndLog({
+      sender: "AI",
+      message: combinedAssistant,
+      ticketId: primary.ticket.id,
+      conversationId: primaryAssistantRow?.id ?? null,
+      userId: user.id,
+      contextText: data.message,
+      source: "chat:ai",
+    }).catch(() => undefined);
 
     // For sibling tickets, seed their own conversation with the excerpt + their assistant reply
     for (const c of created.slice(1)) {
-      await supabaseAdmin.from("conversations").insert([
+      const { data: siblingMsgs } = await supabaseAdmin.from("conversations").insert([
         { ticket_id: c.ticket.id, role: "user", message: c.item.excerpt },
         { ticket_id: c.ticket.id, role: "assistant", message: c.assistantText },
-      ]);
+      ]).select();
+      const sRows = (siblingMsgs ?? []) as Array<{ id: string; role: string; message: string }>;
+      const sUser = sRows.find((m) => m.role === "user");
+      const sAi = sRows.find((m) => m.role === "assistant");
+      evaluateMessageAndLog({
+        sender: "User",
+        message: c.item.excerpt,
+        ticketId: c.ticket.id,
+        conversationId: sUser?.id ?? null,
+        userId: user.id,
+        source: "chat:user",
+      }).catch(() => undefined);
+      evaluateMessageAndLog({
+        sender: "AI",
+        message: c.assistantText,
+        ticketId: c.ticket.id,
+        conversationId: sAi?.id ?? null,
+        userId: user.id,
+        contextText: c.item.excerpt,
+        source: "chat:ai",
+      }).catch(() => undefined);
     }
 
-    // Governance: evaluate every ticket created (fire-and-forget).
-    for (const c of created) {
-      evaluateTicketAndLog(c.ticket.id, true).catch(() => undefined);
-    }
 
     return {
       ticket: primary.ticket,
