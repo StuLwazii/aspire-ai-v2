@@ -1,6 +1,7 @@
-// Server-only helper that auto-evaluates AI responses for ethical/compliance
-// risks and logs them to compliance_logs. Safe to call from any server fn or
-// route handler (uses supabaseAdmin, no user role required).
+// Server-only helper that auto-evaluates every message (user, AI, admin) for
+// ethical/compliance risks and writes a row into compliance_logs. All chat
+// surfaces remain untouched — governance data is visible only inside the
+// AI Governance & Compliance page.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const RISK_CATEGORIES = [
@@ -12,9 +13,14 @@ const RISK_CATEGORIES = [
   "toxic_language",
   "harmful_stereotypes",
   "misinformation",
+  "privacy_violation",
+  "policy_violation",
 ] as const;
 
 type RiskLevel = "Low" | "Medium" | "High" | "Critical";
+type StatusLabel = "Safe" | "Warning" | "High Risk" | "Critical";
+type ActionTaken = "Passed" | "Flagged" | "Escalated" | "Blocked";
+export type Sender = "User" | "AI" | "Admin";
 
 function levelFromScore(score: number): RiskLevel {
   if (score >= 76) return "Critical";
@@ -23,7 +29,31 @@ function levelFromScore(score: number): RiskLevel {
   return "Low";
 }
 
-async function evaluateWithAI(prompt: string, response: string) {
+function statusFromScore(score: number): StatusLabel {
+  if (score >= 76) return "Critical";
+  if (score >= 51) return "High Risk";
+  if (score >= 26) return "Warning";
+  return "Safe";
+}
+
+function actionFromScore(score: number): ActionTaken {
+  if (score >= 90) return "Blocked";
+  if (score >= 60) return "Escalated";
+  if (score >= 26) return "Flagged";
+  return "Passed";
+}
+
+type Evaluation = {
+  riskScore: number;
+  riskLevel: RiskLevel;
+  identifiedRisks: Array<{ category?: string; severity?: string; explanation?: string }>;
+  transparencyNotes: { confidenceScore: number; limitations: string[]; ethicalNotes: string[] };
+  sentiment: string;
+  piiDetected: string[];
+  explanation: string;
+};
+
+async function evaluateWithAI(sender: Sender, message: string, contextText: string): Promise<Evaluation> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
   const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -34,21 +64,21 @@ async function evaluateWithAI(prompt: string, response: string) {
       messages: [
         {
           role: "system",
-          content: `You are an AI risk and compliance auditor. Evaluate an AI assistant response for ethical risks.
-Risk categories: ${RISK_CATEGORIES.join(", ")}.
-Return strict JSON only:
+          content: `You are an AI risk & compliance auditor for an enterprise ticketing system.
+Analyze the single MESSAGE below (written by ${sender}) inside the given CONTEXT.
+Analyse every message, even completely safe ones.
+Return STRICT JSON only, no prose, no markdown fences:
 {
-  "riskScore": number (0-100),
-  "identifiedRisks": [{"category": <one of categories>, "severity": "low|medium|high", "explanation": string}],
-  "transparencyNotes": {
-    "confidenceScore": number (0-100),
-    "limitations": string[],
-    "ethicalNotes": string[]
-  }
+  "riskScore": number 0-100,
+  "identifiedRisks": [ { "category": one of [${RISK_CATEGORIES.join(", ")}], "severity": "low"|"medium"|"high", "explanation": string } ],
+  "sentiment": "positive" | "neutral" | "negative" | "frustrated" | "angry" | "professional",
+  "piiDetected": array of strings such as "email","phone","ssn","credit_card","address","national_id","dob","passport" (empty if none),
+  "explanation": one short sentence explaining the score,
+  "transparencyNotes": { "confidenceScore": 0-100, "limitations": string[], "ethicalNotes": string[] }
 }
-Score 0 if no risks detected. Higher score for stronger or multiple risks.`,
+Score 0 for benign safe messages. Increase for bias, toxicity, misinformation, harassment, PII leaks, policy violations.`,
         },
-        { role: "user", content: `PROMPT:\n${prompt}\n\nRESPONSE:\n${response}` },
+        { role: "user", content: `CONTEXT:\n${contextText || "(no prior context)"}\n\nMESSAGE (${sender}):\n${message}` },
       ],
     }),
   });
@@ -56,122 +86,209 @@ Score 0 if no risks detected. Higher score for stronger or multiple risks.`,
   const json = await res.json();
   const raw = json.choices?.[0]?.message?.content ?? "{}";
   const cleaned = String(raw).replace(/```json|```/g, "").trim();
-  let parsed: { riskScore?: number; identifiedRisks?: unknown[]; transparencyNotes?: { confidenceScore?: number; limitations?: unknown[]; ethicalNotes?: unknown[] } } = {};
+  let parsed: Partial<Evaluation> & { transparencyNotes?: Partial<Evaluation["transparencyNotes"]> } = {};
   try { parsed = JSON.parse(cleaned); } catch { parsed = {}; }
+
   const score = Math.max(0, Math.min(100, Math.round(Number(parsed.riskScore) || 0)));
   const identifiedRisks = Array.isArray(parsed.identifiedRisks) ? parsed.identifiedRisks.slice(0, 12) : [];
+  const piiDetected = Array.isArray(parsed.piiDetected)
+    ? parsed.piiDetected.map((s) => String(s)).slice(0, 10)
+    : [];
+  const sentiment = typeof parsed.sentiment === "string" ? parsed.sentiment : "neutral";
+  const explanation = typeof parsed.explanation === "string" ? parsed.explanation.slice(0, 1000) : "";
   const tn = parsed.transparencyNotes;
   const transparencyNotes = tn && typeof tn === "object"
     ? {
         confidenceScore: Math.max(0, Math.min(100, Math.round(Number(tn.confidenceScore) || 80))),
-        limitations: Array.isArray(tn.limitations) ? tn.limitations.slice(0, 6) : [],
-        ethicalNotes: Array.isArray(tn.ethicalNotes) ? tn.ethicalNotes.slice(0, 6) : [],
+        limitations: Array.isArray(tn.limitations) ? (tn.limitations as string[]).slice(0, 6) : [],
+        ethicalNotes: Array.isArray(tn.ethicalNotes) ? (tn.ethicalNotes as string[]).slice(0, 6) : [],
       }
     : { confidenceScore: 85, limitations: [], ethicalNotes: [] };
-  return { riskScore: score, riskLevel: levelFromScore(score), identifiedRisks, transparencyNotes };
+
+  return {
+    riskScore: score,
+    riskLevel: levelFromScore(score),
+    identifiedRisks,
+    transparencyNotes,
+    sentiment,
+    piiDetected,
+    explanation,
+  };
+}
+
+function preview(text: string, n = 240) {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  return t.length > n ? `${t.slice(0, n)}…` : t;
+}
+
+export type EvaluateMessageArgs = {
+  sender: Sender;
+  message: string;
+  ticketId?: string | null;
+  conversationId?: string | null;
+  userId?: string | null;
+  contextText?: string;
+  source?: string;
+};
+
+/**
+ * Evaluate a single message and insert one governance log row.
+ * Fire-and-forget safe: never throws.
+ */
+export async function evaluateMessageAndLog(args: EvaluateMessageArgs): Promise<void> {
+  try {
+    const msg = (args.message ?? "").trim();
+    if (!msg) return;
+
+    // Dedupe: don't double-log the same conversation message.
+    if (args.conversationId) {
+      const { data: existing } = await supabaseAdmin
+        .from("compliance_logs")
+        .select("id")
+        .eq("conversation_id", args.conversationId)
+        .limit(1)
+        .maybeSingle();
+      if (existing) return;
+    }
+
+    const evalResult = await evaluateWithAI(
+      args.sender,
+      msg.slice(0, 12000),
+      (args.contextText ?? "").slice(0, 8000),
+    );
+
+    const statusLabel = statusFromScore(evalResult.riskScore);
+    const actionTaken = actionFromScore(evalResult.riskScore);
+    const complianceStatus =
+      evalResult.riskLevel === "Critical" || evalResult.riskLevel === "High"
+        ? "Pending Review"
+        : "Approved";
+
+    const source = args.source ?? `chat:${args.sender.toLowerCase()}`;
+    const insertPayload: Record<string, unknown> = {
+      user_id: args.userId ?? null,
+      ticket_id: args.ticketId ?? null,
+      conversation_id: args.conversationId ?? null,
+      sender: args.sender,
+      message_preview: preview(msg),
+      prompt: args.contextText ?? null,
+      response: msg,
+      risk_score: evalResult.riskScore,
+      risk_level: evalResult.riskLevel,
+      status_label: statusLabel,
+      action_taken: actionTaken,
+      sentiment: evalResult.sentiment,
+      pii_detected: evalResult.piiDetected as never,
+      identified_risks: evalResult.identifiedRisks as never,
+      transparency_notes: evalResult.transparencyNotes as never,
+      governance_explanation: evalResult.explanation,
+      compliance_status: complianceStatus,
+      source,
+    };
+
+    const { error } = await supabaseAdmin.from("compliance_logs").insert(insertPayload as never);
+    if (error) console.error("[compliance] insert failed", error.message);
+  } catch (err) {
+    console.error("[compliance] evaluation failed", err instanceof Error ? err.message : err);
+  }
 }
 
 /**
- * Evaluate an AI response and write a compliance_logs row.
- * Never throws — failures are swallowed and logged so chat flows are not
- * disrupted by the governance layer.
+ * Legacy wrapper kept for compatibility. Logs the AI response as an AI message
+ * with the prompt as context.
  */
 export async function autoEvaluateAndLog(args: {
   prompt: string;
   response: string;
   source: string;
   userId?: string | null;
+  ticketId?: string | null;
 }): Promise<void> {
-  try {
-    if (!args.prompt?.trim() || !args.response?.trim()) return;
-    const evalResult = await evaluateWithAI(args.prompt.slice(0, 8000), args.response.slice(0, 12000));
-    const complianceStatus =
-      evalResult.riskLevel === "Critical" || evalResult.riskLevel === "High"
-        ? "Pending Review"
-        : "Approved";
-    const { error } = await supabaseAdmin.from("compliance_logs").insert({
-      user_id: args.userId ?? null,
-      prompt: args.prompt,
-      response: args.response,
-      risk_score: evalResult.riskScore,
-      risk_level: evalResult.riskLevel,
-      identified_risks: evalResult.identifiedRisks as never,
-      transparency_notes: evalResult.transparencyNotes as never,
-      compliance_status: complianceStatus,
-      source: args.source,
-    });
-    if (error) console.error("[compliance] insert failed", error.message);
-  } catch (err) {
-    console.error("[compliance] auto-evaluation failed", err instanceof Error ? err.message : err);
-  }
+  await evaluateMessageAndLog({
+    sender: "AI",
+    message: args.response,
+    contextText: args.prompt,
+    userId: args.userId,
+    ticketId: args.ticketId ?? null,
+    source: args.source,
+  });
+}
+
+type Msg = { id: string; role: string; message: string; created_at: string };
+
+function inferSender(role: string, isAgentAuthored?: boolean): Sender {
+  if (role === "user") return "User";
+  if (isAgentAuthored) return "Admin";
+  return "AI";
 }
 
 /**
- * Evaluate a ticket (initial message + full conversation history) and write a
- * compliance_logs row tagged with `source = ticket:<id>`. Dedupes by source
- * unless `force` is true. Fire-and-forget safe.
+ * Re-evaluate every message on a ticket. Used by the backfill button.
+ * With `force = false`, messages that already have a log row are skipped.
+ * With `force = true`, all existing per-message logs for this ticket are
+ * removed and every message is re-evaluated from scratch.
  */
 export async function evaluateTicketAndLog(
   ticketId: string,
   force = false,
 ): Promise<"evaluated" | "skipped" | "no-response"> {
   try {
-    const source = `ticket:${ticketId}`;
-    if (!force) {
-      const { data: existing } = await supabaseAdmin
-        .from("compliance_logs")
-        .select("id")
-        .eq("source", source)
-        .limit(1)
-        .maybeSingle();
-      if (existing) return "skipped";
-    }
     const { data: ticket } = await supabaseAdmin
       .from("tickets")
-      .select("id, user_id, message, ai_response, title, category, priority, status")
+      .select("id, user_id, message")
       .eq("id", ticketId)
       .maybeSingle();
     if (!ticket) return "skipped";
+
     const { data: convs } = await supabaseAdmin
       .from("conversations")
-      .select("role, message, created_at")
+      .select("id, role, message, created_at")
       .eq("ticket_id", ticketId)
       .order("created_at", { ascending: true });
-    const rows = (convs ?? []) as Array<{ role: string; message: string }>;
-    const userParts = rows.filter((c) => c.role === "user").map((c) => c.message);
-    const responseParts = rows
-      .filter((c) => c.role !== "user")
-      .map((c) => `[${c.role}] ${c.message}`);
-    const t = ticket as { id: string; user_id: string | null; message: string; ai_response: string | null; title: string | null; category: string; priority: string; status: string };
-    const promptHeader = `Ticket #${t.id.slice(0, 8)} — ${t.title ?? ""}\nCategory: ${t.category} | Priority: ${t.priority} | Status: ${t.status}`;
-    const promptBody = [t.message, ...userParts.filter((m) => m !== t.message)].join("\n\n");
-    const response = responseParts.length > 0 ? responseParts.join("\n\n") : (t.ai_response ?? "");
-    if (!response.trim()) return "no-response";
+    const rows = (convs ?? []) as Msg[];
 
-    const evalResult = await evaluateWithAI(
-      `${promptHeader}\n\n${promptBody}`.slice(0, 8000),
-      response.slice(0, 12000),
-    );
-    const complianceStatus =
-      evalResult.riskLevel === "Critical" || evalResult.riskLevel === "High"
-        ? "Pending Review"
-        : "Approved";
-    const { error } = await supabaseAdmin.from("compliance_logs").insert({
-      user_id: t.user_id ?? null,
-      prompt: `${promptHeader}\n\n${promptBody}`,
-      response,
-      risk_score: evalResult.riskScore,
-      risk_level: evalResult.riskLevel,
-      identified_risks: evalResult.identifiedRisks as never,
-      transparency_notes: evalResult.transparencyNotes as never,
-      compliance_status: complianceStatus,
-      source,
-    });
-    if (error) {
-      console.error("[compliance] ticket insert failed", error.message);
-      return "skipped";
+    // If force, wipe existing per-conversation logs for this ticket so we
+    // re-evaluate cleanly. Aggregate ticket-level logs (no conversation_id)
+    // are also cleared so the dashboard reflects only per-message rows.
+    if (force) {
+      await supabaseAdmin.from("compliance_logs").delete().eq("ticket_id", ticketId);
     }
-    return "evaluated";
+
+    let evaluated = 0;
+
+    // Some deployments may have a ticket.message without a corresponding
+    // conversations row for the very first user message — evaluate it too
+    // when no matching conversation row exists.
+    const t = ticket as { id: string; user_id: string | null; message: string };
+    const firstUserRow = rows.find((r) => r.role === "user" && r.message === t.message);
+    if (!firstUserRow && t.message?.trim()) {
+      await evaluateMessageAndLog({
+        sender: "User",
+        message: t.message,
+        ticketId: t.id,
+        userId: t.user_id,
+        source: "ticket:initial",
+      });
+      evaluated++;
+    }
+
+    let context = "";
+    for (const r of rows) {
+      const sender: Sender = r.role === "user" ? "User" : "AI";
+      await evaluateMessageAndLog({
+        sender,
+        message: r.message,
+        ticketId: t.id,
+        conversationId: r.id,
+        userId: t.user_id,
+        contextText: context,
+        source: `ticket:${r.role}`,
+      });
+      context = `${context}\n[${sender}] ${r.message}`.slice(-4000);
+      evaluated++;
+    }
+
+    return evaluated > 0 ? "evaluated" : "no-response";
   } catch (err) {
     console.error("[compliance] ticket evaluation failed", err instanceof Error ? err.message : err);
     return "skipped";

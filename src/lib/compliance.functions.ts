@@ -144,7 +144,7 @@ export const listComplianceLogs = createServerFn({ method: "POST" })
     let q = supabase.from("compliance_logs").select("*").order("created_at", { ascending: false }).limit(data.limit ?? 100);
     if (data.riskLevel) q = q.eq("risk_level", data.riskLevel);
     if (data.status) q = q.eq("compliance_status", data.status);
-    if (data.search) q = q.or(`prompt.ilike.%${data.search}%,response.ilike.%${data.search}%`);
+    if (data.search) q = q.or(`prompt.ilike.%${data.search}%,response.ilike.%${data.search}%,message_preview.ilike.%${data.search}%`);
     const { data: rows, error } = await q;
     if (error) throw error;
     return rows ?? [];
@@ -159,9 +159,9 @@ export const complianceDashboard = createServerFn({ method: "GET" })
 
     const { data: rows, error } = await supabase
       .from("compliance_logs")
-      .select("id,risk_score,risk_level,compliance_status,identified_risks,created_at")
+      .select("id,risk_score,risk_level,compliance_status,status_label,action_taken,sender,identified_risks,created_at")
       .order("created_at", { ascending: false })
-      .limit(1000);
+      .limit(2000);
     if (error) throw error;
     const logs = rows ?? [];
     const total = logs.length;
@@ -170,12 +170,22 @@ export const complianceDashboard = createServerFn({ method: "GET" })
     const avgScore = total ? logs.reduce((s, l) => s + (l.risk_score ?? 0), 0) / total : 0;
 
     const statusCounts: Record<string, number> = {};
+    const statusLabelCounts: Record<string, number> = {};
+    const actionCounts: Record<string, number> = {};
+    const senderCounts: Record<string, number> = {};
     const biasCounts: Record<string, number> = {};
     const trend: Record<string, { date: string; avg: number; count: number; sum: number }> = {};
     const monthly: Record<string, { month: string; count: number; flagged: number }> = {};
 
     for (const l of logs) {
       statusCounts[l.compliance_status] = (statusCounts[l.compliance_status] ?? 0) + 1;
+      const sl = (l as { status_label?: string | null }).status_label
+        ?? (l.risk_level === "Low" ? "Safe" : l.risk_level === "Medium" ? "Warning" : l.risk_level === "High" ? "High Risk" : "Critical");
+      statusLabelCounts[sl] = (statusLabelCounts[sl] ?? 0) + 1;
+      const at = (l as { action_taken?: string | null }).action_taken ?? "Passed";
+      actionCounts[at] = (actionCounts[at] ?? 0) + 1;
+      const sn = (l as { sender?: string | null }).sender ?? "AI";
+      senderCounts[sn] = (senderCounts[sn] ?? 0) + 1;
       const risks = Array.isArray(l.identified_risks) ? l.identified_risks : [];
       for (const r of risks as Array<{ category?: string }>) {
         if (r && typeof r.category === "string") biasCounts[r.category] = (biasCounts[r.category] ?? 0) + 1;
@@ -194,7 +204,10 @@ export const complianceDashboard = createServerFn({ method: "GET" })
 
     return {
       kpis: { total, flagged, highRisk, avgScore: Math.round(avgScore * 10) / 10 },
-      statusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
+      statusDistribution: Object.entries(statusLabelCounts).map(([name, value]) => ({ name, value })),
+      reviewStatusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
+      actionDistribution: Object.entries(actionCounts).map(([name, value]) => ({ name, value })),
+      senderDistribution: Object.entries(senderCounts).map(([name, value]) => ({ name, value })),
       biasCategories: Object.entries(biasCounts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
       riskTrend: Object.values(trend).sort((a, b) => a.date.localeCompare(b.date)),
       monthly: Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month)),
@@ -300,11 +313,21 @@ export const adminBackfillTicketCompliance = createServerFn({ method: "POST" })
       .from("tickets")
       .select("id")
       .order("created_at", { ascending: false })
-      .limit(data.limit ?? 250);
+      .limit(data.limit ?? 500);
     if (error) throw error;
     let evaluated = 0, skipped = 0, failed = 0;
     for (const t of (tickets ?? []) as Array<{ id: string }>) {
       try {
+        // When not forcing, skip tickets that already have any log rows.
+        if (!data.force) {
+          const { data: existing } = await supabaseAdmin
+            .from("compliance_logs")
+            .select("id")
+            .eq("ticket_id", t.id)
+            .limit(1)
+            .maybeSingle();
+          if (existing) { skipped++; continue; }
+        }
         const res = await evaluateTicketAndLog(t.id, data.force ?? false);
         if (res === "evaluated") evaluated++;
         else skipped++;
