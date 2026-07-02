@@ -353,15 +353,30 @@ export const continueConversation = createServerFn({ method: "POST" })
         { ticket_id: ticket.id, role: "assistant", message: reply },
       ]).select();
     if (me) throw new Error(me.message);
-    await autoEvaluateAndLog({
-      prompt: data.message,
-      response: reply,
-      source: "chatbot_followup",
-    });
-    // Re-evaluate the full ticket so governance reflects the latest exchange.
-    evaluateTicketAndLog(ticket.id, true).catch(() => undefined);
+
+    const rows = (msgs ?? []) as Array<{ id: string; role: string; message: string }>;
+    const userRow = rows.find((m) => m.role === "user");
+    const aiRow = rows.find((m) => m.role === "assistant");
+    const contextForAi = (history ?? []).map((h) => `[${h.role}] ${h.message}`).join("\n").slice(-4000);
+    evaluateMessageAndLog({
+      sender: "User",
+      message: data.message,
+      ticketId: ticket.id,
+      conversationId: userRow?.id ?? null,
+      contextText: contextForAi,
+      source: "chat:user",
+    }).catch(() => undefined);
+    evaluateMessageAndLog({
+      sender: "AI",
+      message: reply,
+      ticketId: ticket.id,
+      conversationId: aiRow?.id ?? null,
+      contextText: `${contextForAi}\n[user] ${data.message}`,
+      source: "chat:ai",
+    }).catch(() => undefined);
     return { messages: msgs ?? [] };
   });
+
 
 // User marks a self-service answer as resolved or not
 export const markUserResolution = createServerFn({ method: "POST" })
