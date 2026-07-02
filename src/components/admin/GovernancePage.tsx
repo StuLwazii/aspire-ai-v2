@@ -79,13 +79,20 @@ function statusBadge(s: string) {
 }
 
 function toCSV(rows: Log[]) {
-  const headers = ["id", "created_at", "risk_score", "risk_level", "compliance_status", "source", "prompt", "response", "identified_risks"];
+  const headers = [
+    "id", "created_at", "ticket_id", "conversation_id", "sender",
+    "risk_score", "risk_level", "status_label", "action_taken",
+    "sentiment", "pii_detected", "compliance_status", "source",
+    "message_preview", "governance_explanation", "identified_risks",
+  ];
   const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [headers.join(",")];
   for (const r of rows) {
     lines.push([
-      r.id, r.created_at, r.risk_score, r.risk_level, r.compliance_status, r.source,
-      r.prompt, r.response, JSON.stringify(r.identified_risks ?? []),
+      r.id, r.created_at, r.ticket_id ?? "", r.conversation_id ?? "", r.sender ?? "",
+      r.risk_score, r.risk_level, r.status_label ?? "", r.action_taken ?? "",
+      r.sentiment ?? "", JSON.stringify(r.pii_detected ?? []), r.compliance_status, r.source,
+      r.message_preview ?? "", r.governance_explanation ?? "", JSON.stringify(r.identified_risks ?? []),
     ].map(escape).join(","));
   }
   return lines.join("\n");
