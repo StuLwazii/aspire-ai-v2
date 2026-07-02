@@ -121,52 +121,79 @@ export type Database = {
       }
       compliance_logs: {
         Row: {
+          action_taken: string | null
           compliance_status: string
+          conversation_id: string | null
           created_at: string
+          governance_explanation: string | null
           id: string
           identified_risks: Json
-          prompt: string
-          response: string
+          message_preview: string | null
+          pii_detected: Json
+          prompt: string | null
+          response: string | null
           review_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           risk_level: string
           risk_score: number
+          sender: string | null
+          sentiment: string | null
           source: string
+          status_label: string | null
+          ticket_id: string | null
           transparency_notes: Json
           updated_at: string
           user_id: string | null
         }
         Insert: {
+          action_taken?: string | null
           compliance_status?: string
+          conversation_id?: string | null
           created_at?: string
+          governance_explanation?: string | null
           id?: string
           identified_risks?: Json
-          prompt: string
-          response: string
+          message_preview?: string | null
+          pii_detected?: Json
+          prompt?: string | null
+          response?: string | null
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           risk_level?: string
           risk_score?: number
+          sender?: string | null
+          sentiment?: string | null
           source?: string
+          status_label?: string | null
+          ticket_id?: string | null
           transparency_notes?: Json
           updated_at?: string
           user_id?: string | null
         }
         Update: {
+          action_taken?: string | null
           compliance_status?: string
+          conversation_id?: string | null
           created_at?: string
+          governance_explanation?: string | null
           id?: string
           identified_risks?: Json
-          prompt?: string
-          response?: string
+          message_preview?: string | null
+          pii_detected?: Json
+          prompt?: string | null
+          response?: string | null
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           risk_level?: string
           risk_score?: number
+          sender?: string | null
+          sentiment?: string | null
           source?: string
+          status_label?: string | null
+          ticket_id?: string | null
           transparency_notes?: Json
           updated_at?: string
           user_id?: string | null
