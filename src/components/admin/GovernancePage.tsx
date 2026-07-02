@@ -424,8 +424,9 @@ export default function GovernancePage() {
                 </div>
                 <Button size="sm" variant="outline" onClick={() => { setSelected(l); setReviewNotes(l.review_notes ?? ""); setOverride(""); }}>Review</Button>
               </div>
-              <div className="text-sm"><span className="text-muted-foreground">Prompt:</span> {l.prompt.slice(0, 200)}</div>
-              <div className="text-sm"><span className="text-muted-foreground">Response:</span> {l.response.slice(0, 200)}</div>
+              <div className="text-sm"><span className="text-muted-foreground">Sender:</span> {l.sender ?? "AI"} · <span className="text-muted-foreground">Action:</span> {l.action_taken ?? "—"}</div>
+              <div className="text-sm"><span className="text-muted-foreground">Message:</span> {(l.message_preview ?? l.response ?? "").slice(0, 240)}</div>
+              {l.governance_explanation && <div className="text-xs text-muted-foreground">{l.governance_explanation}</div>}
             </Card>
           ))}
         </TabsContent>
