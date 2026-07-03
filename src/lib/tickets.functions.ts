@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { evaluateMessageAndLog } from "@/lib/compliance.server";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
@@ -20,12 +19,18 @@ const TONE_PROMPTS: Record<Category, string> = {
   Operations: "Urgent + action-oriented. Confirm urgency, give clear numbered steps, state priority (P1/P2/P3).",
 };
 
-import { callAIWithRetry } from "@/lib/ai-retry.server";
-
-async function callAI(body: unknown, fnName = "tickets.callAI", ctx?: { ticketId?: string | null; conversationId?: string | null }) {
-  return (await callAIWithRetry(body, { fnName, ticketId: ctx?.ticketId ?? null, conversationId: ctx?.conversationId ?? null })) as {
-    choices: Array<{ message: { content?: string; tool_calls?: Array<{ function: { arguments: string } }> } }>;
-  };
+async function callAI(body: unknown) {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 429) throw new Error("AI rate limit reached. Please try again shortly.");
+  if (res.status === 402) throw new Error("AI credits exhausted. Please top up in Workspace settings.");
+  if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
+  return res.json();
 }
 
 type TriageItem = {
@@ -259,56 +264,13 @@ export const startConversation = createServerFn({ method: "POST" })
       ]).select();
     if (me) throw new Error(me.message);
 
-    // Governance: log the user message + AI reply as two individual entries.
-    const primaryMsgs = (msgs ?? []) as Array<{ id: string; role: string; message: string }>;
-    const primaryUserRow = primaryMsgs.find((m) => m.role === "user");
-    const primaryAssistantRow = primaryMsgs.find((m) => m.role === "assistant");
-    evaluateMessageAndLog({
-      sender: "User",
-      message: data.message,
-      ticketId: primary.ticket.id,
-      conversationId: primaryUserRow?.id ?? null,
-      userId: user.id,
-      source: "chat:user",
-    }).catch(() => undefined);
-    evaluateMessageAndLog({
-      sender: "AI",
-      message: combinedAssistant,
-      ticketId: primary.ticket.id,
-      conversationId: primaryAssistantRow?.id ?? null,
-      userId: user.id,
-      contextText: data.message,
-      source: "chat:ai",
-    }).catch(() => undefined);
-
     // For sibling tickets, seed their own conversation with the excerpt + their assistant reply
     for (const c of created.slice(1)) {
-      const { data: siblingMsgs } = await supabaseAdmin.from("conversations").insert([
+      await supabaseAdmin.from("conversations").insert([
         { ticket_id: c.ticket.id, role: "user", message: c.item.excerpt },
         { ticket_id: c.ticket.id, role: "assistant", message: c.assistantText },
-      ]).select();
-      const sRows = (siblingMsgs ?? []) as Array<{ id: string; role: string; message: string }>;
-      const sUser = sRows.find((m) => m.role === "user");
-      const sAi = sRows.find((m) => m.role === "assistant");
-      evaluateMessageAndLog({
-        sender: "User",
-        message: c.item.excerpt,
-        ticketId: c.ticket.id,
-        conversationId: sUser?.id ?? null,
-        userId: user.id,
-        source: "chat:user",
-      }).catch(() => undefined);
-      evaluateMessageAndLog({
-        sender: "AI",
-        message: c.assistantText,
-        ticketId: c.ticket.id,
-        conversationId: sAi?.id ?? null,
-        userId: user.id,
-        contextText: c.item.excerpt,
-        source: "chat:ai",
-      }).catch(() => undefined);
+      ]);
     }
-
 
     return {
       ticket: primary.ticket,
@@ -347,30 +309,8 @@ export const continueConversation = createServerFn({ method: "POST" })
         { ticket_id: ticket.id, role: "assistant", message: reply },
       ]).select();
     if (me) throw new Error(me.message);
-
-    const rows = (msgs ?? []) as Array<{ id: string; role: string; message: string }>;
-    const userRow = rows.find((m) => m.role === "user");
-    const aiRow = rows.find((m) => m.role === "assistant");
-    const contextForAi = (history ?? []).map((h) => `[${h.role}] ${h.message}`).join("\n").slice(-4000);
-    evaluateMessageAndLog({
-      sender: "User",
-      message: data.message,
-      ticketId: ticket.id,
-      conversationId: userRow?.id ?? null,
-      contextText: contextForAi,
-      source: "chat:user",
-    }).catch(() => undefined);
-    evaluateMessageAndLog({
-      sender: "AI",
-      message: reply,
-      ticketId: ticket.id,
-      conversationId: aiRow?.id ?? null,
-      contextText: `${contextForAi}\n[user] ${data.message}`,
-      source: "chat:ai",
-    }).catch(() => undefined);
     return { messages: msgs ?? [] };
   });
-
 
 // User marks a self-service answer as resolved or not
 export const markUserResolution = createServerFn({ method: "POST" })
@@ -771,28 +711,15 @@ export const agentRespondToTicket = createServerFn({ method: "POST" })
       const { error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", data.ticketId);
       if (error) throw new Error(error.message);
     }
-    let insertedRow: { id: string } | null = null;
     if (data.response) {
-      const { data: inserted, error } = await supabaseAdmin.from("conversations").insert({
+      const { error } = await supabaseAdmin.from("conversations").insert({
         ticket_id: data.ticketId, role: "assistant", message: data.response,
-      }).select("id").single();
+      });
       if (error) throw new Error(error.message);
-      insertedRow = inserted as { id: string };
     }
     if (data.status === "resolved" && p.status !== "resolved") {
       await bumpAgentWorkload(me.id, -1);
     }
-    if (data.response) {
-      evaluateMessageAndLog({
-        sender: "Admin",
-        message: data.response,
-        ticketId: data.ticketId,
-        conversationId: insertedRow?.id ?? null,
-        userId: context.userId,
-        source: "chat:admin",
-      }).catch(() => undefined);
-    }
-
     return { ok: true };
   });
 
@@ -841,15 +768,6 @@ export const adminUpdateTicket = createServerFn({ method: "POST" })
     }
     const { data: row, error } = await supabaseAdmin.from("tickets").update(patch as never).eq("id", id).select().single();
     if (error) throw new Error(error.message);
-    if (patch.ai_response) {
-      evaluateMessageAndLog({
-        sender: "Admin",
-        message: String(patch.ai_response),
-        ticketId: id,
-        userId: context.userId,
-        source: "admin:ai_response",
-      }).catch(() => undefined);
-    }
     return row;
   });
 

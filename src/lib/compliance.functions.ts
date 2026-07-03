@@ -7,37 +7,35 @@ const RISK_CATEGORIES = [
   "racial_bias",
   "religious_bias",
   "political_bias",
-  "age_bias",
-  "disability_bias",
-  "socioeconomic_bias",
   "cultural_bias",
-  "other_bias",
   "toxic_language",
-  "harassment",
   "harmful_stereotypes",
   "misinformation",
-  "privacy_violation",
-  "policy_violation",
 ] as const;
 
 export type RiskCategory = (typeof RISK_CATEGORIES)[number];
 
 export type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 
-// Spec thresholds: Safe 0-20, Warning 21-50, High Risk 51-80, Critical 81-100
 function levelFromScore(score: number): RiskLevel {
-  if (score >= 81) return "Critical";
+  if (score >= 76) return "Critical";
   if (score >= 51) return "High";
-  if (score >= 21) return "Medium";
+  if (score >= 26) return "Medium";
   return "Low";
 }
 
-import { callAIWithRetry } from "@/lib/ai-retry.server";
-
 async function callAI(body: unknown) {
-  return (await callAIWithRetry(body, { fnName: "compliance.evaluateManual" })) as {
-    choices: Array<{ message: { content?: string } }>;
-  };
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 429) throw new Error("AI rate limit reached. Try again shortly.");
+  if (res.status === 402) throw new Error("AI credits exhausted.");
+  if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
+  return res.json();
 }
 
 async function evaluateWithAI(prompt: string, response: string) {
@@ -146,7 +144,7 @@ export const listComplianceLogs = createServerFn({ method: "POST" })
     let q = supabase.from("compliance_logs").select("*").order("created_at", { ascending: false }).limit(data.limit ?? 100);
     if (data.riskLevel) q = q.eq("risk_level", data.riskLevel);
     if (data.status) q = q.eq("compliance_status", data.status);
-    if (data.search) q = q.or(`prompt.ilike.%${data.search}%,response.ilike.%${data.search}%,message_preview.ilike.%${data.search}%`);
+    if (data.search) q = q.or(`prompt.ilike.%${data.search}%,response.ilike.%${data.search}%`);
     const { data: rows, error } = await q;
     if (error) throw error;
     return rows ?? [];
@@ -161,9 +159,9 @@ export const complianceDashboard = createServerFn({ method: "GET" })
 
     const { data: rows, error } = await supabase
       .from("compliance_logs")
-      .select("id,risk_score,risk_level,compliance_status,status_label,action_taken,sender,identified_risks,created_at")
+      .select("id,risk_score,risk_level,compliance_status,identified_risks,created_at")
       .order("created_at", { ascending: false })
-      .limit(2000);
+      .limit(1000);
     if (error) throw error;
     const logs = rows ?? [];
     const total = logs.length;
@@ -172,22 +170,12 @@ export const complianceDashboard = createServerFn({ method: "GET" })
     const avgScore = total ? logs.reduce((s, l) => s + (l.risk_score ?? 0), 0) / total : 0;
 
     const statusCounts: Record<string, number> = {};
-    const statusLabelCounts: Record<string, number> = {};
-    const actionCounts: Record<string, number> = {};
-    const senderCounts: Record<string, number> = {};
     const biasCounts: Record<string, number> = {};
     const trend: Record<string, { date: string; avg: number; count: number; sum: number }> = {};
     const monthly: Record<string, { month: string; count: number; flagged: number }> = {};
 
     for (const l of logs) {
       statusCounts[l.compliance_status] = (statusCounts[l.compliance_status] ?? 0) + 1;
-      const sl = (l as { status_label?: string | null }).status_label
-        ?? (l.risk_level === "Low" ? "Safe" : l.risk_level === "Medium" ? "Warning" : l.risk_level === "High" ? "High Risk" : "Critical");
-      statusLabelCounts[sl] = (statusLabelCounts[sl] ?? 0) + 1;
-      const at = (l as { action_taken?: string | null }).action_taken ?? "Passed";
-      actionCounts[at] = (actionCounts[at] ?? 0) + 1;
-      const sn = (l as { sender?: string | null }).sender ?? "AI";
-      senderCounts[sn] = (senderCounts[sn] ?? 0) + 1;
       const risks = Array.isArray(l.identified_risks) ? l.identified_risks : [];
       for (const r of risks as Array<{ category?: string }>) {
         if (r && typeof r.category === "string") biasCounts[r.category] = (biasCounts[r.category] ?? 0) + 1;
@@ -206,10 +194,7 @@ export const complianceDashboard = createServerFn({ method: "GET" })
 
     return {
       kpis: { total, flagged, highRisk, avgScore: Math.round(avgScore * 10) / 10 },
-      statusDistribution: Object.entries(statusLabelCounts).map(([name, value]) => ({ name, value })),
-      reviewStatusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
-      actionDistribution: Object.entries(actionCounts).map(([name, value]) => ({ name, value })),
-      senderDistribution: Object.entries(senderCounts).map(([name, value]) => ({ name, value })),
+      statusDistribution: Object.entries(statusCounts).map(([name, value]) => ({ name, value })),
       biasCategories: Object.entries(biasCounts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value),
       riskTrend: Object.values(trend).sort((a, b) => a.date.localeCompare(b.date)),
       monthly: Object.values(monthly).sort((a, b) => a.month.localeCompare(b.month)),
@@ -296,46 +281,4 @@ export const complianceReport = createServerFn({ method: "POST" })
       mostCommonRisks,
       logs,
     };
-  });
-
-const BackfillInput = z.object({
-  force: z.boolean().optional(),
-  limit: z.number().int().min(1).max(500).optional(),
-});
-
-export const adminBackfillTicketCompliance = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => BackfillInput.parse(d ?? {}))
-  .handler(async ({ data, context }) => {
-    const isAdmin = await context.supabase.rpc("has_role", { _user_id: context.userId, _role: "admin" });
-    if (!isAdmin.data) throw new Error("Forbidden");
-    const { evaluateTicketAndLog } = await import("@/lib/compliance.server");
-    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: tickets, error } = await supabaseAdmin
-      .from("tickets")
-      .select("id")
-      .order("created_at", { ascending: false })
-      .limit(data.limit ?? 500);
-    if (error) throw error;
-    let evaluated = 0, skipped = 0, failed = 0;
-    for (const t of (tickets ?? []) as Array<{ id: string }>) {
-      try {
-        // When not forcing, skip tickets that already have any log rows.
-        if (!data.force) {
-          const { data: existing } = await supabaseAdmin
-            .from("compliance_logs")
-            .select("id")
-            .eq("ticket_id", t.id)
-            .limit(1)
-            .maybeSingle();
-          if (existing) { skipped++; continue; }
-        }
-        const res = await evaluateTicketAndLog(t.id, data.force ?? false);
-        if (res === "evaluated") evaluated++;
-        else skipped++;
-      } catch {
-        failed++;
-      }
-    }
-    return { processed: (tickets ?? []).length, evaluated, skipped, failed };
   });

@@ -2,7 +2,6 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
-import { callAIWithRetry } from "@/lib/ai-retry.server";
 
 const DEPARTMENTS = ["All", "Sales", "Marketing", "Operations", "Finance", "HR", "IT"] as const;
 const CADENCES = ["weekly", "biweekly", "monthly"] as const;
@@ -14,10 +13,18 @@ async function assertAdmin(userId: string) {
   if (!data) throw new Error("Forbidden: admin role required");
 }
 
-type AIChatResponse = { choices: Array<{ message: { tool_calls?: Array<{ function: { arguments: string } }> } }> };
-
-async function callAI(body: unknown, fnName: string) {
-  return (await callAIWithRetry(body, { fnName })) as AIChatResponse;
+async function callAI(body: unknown) {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 429) throw new Error("AI rate limit reached. Please try again shortly.");
+  if (res.status === 402) throw new Error("AI credits exhausted. Please top up in Workspace settings.");
+  if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
+  return res.json() as Promise<{ choices: Array<{ message: { tool_calls?: Array<{ function: { arguments: string } }> } }> }>;
 }
 
 type TicketLite = {
@@ -122,7 +129,7 @@ async function generateReportContent(department: string, kpis: ReturnType<typeof
       },
     }],
     tool_choice: { type: "function", function: { name: "submit_report" } },
-  }, "adminGenerateReport");
+  });
 
   const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) throw new Error("AI returned no report content");

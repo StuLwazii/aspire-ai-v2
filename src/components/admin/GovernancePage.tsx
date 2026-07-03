@@ -7,7 +7,6 @@ import {
   complianceDashboard,
   reviewComplianceLog,
   complianceReport,
-  adminBackfillTicketCompliance,
 } from "@/lib/compliance.functions";
 import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 import { Card } from "@/components/ui/card";
@@ -32,17 +31,8 @@ type Risk = { category?: string; severity?: string; explanation?: string };
 type Log = {
   id: string;
   user_id: string | null;
-  ticket_id: string | null;
-  conversation_id: string | null;
-  sender: string | null;
-  message_preview: string | null;
-  sentiment: string | null;
-  pii_detected: string[] | null;
-  governance_explanation: string | null;
-  action_taken: string | null;
-  status_label: string | null;
-  prompt: string | null;
-  response: string | null;
+  prompt: string;
+  response: string;
   risk_score: number;
   risk_level: string;
   identified_risks: Risk[];
@@ -61,11 +51,8 @@ const PIE_COLORS = ["#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#3b82f6", "#ec4
 function riskBadge(level: string) {
   const map: Record<string, string> = {
     Low: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
-    Safe: "bg-emerald-500/15 text-emerald-600 border-emerald-500/30",
     Medium: "bg-amber-500/15 text-amber-600 border-amber-500/30",
-    Warning: "bg-amber-500/15 text-amber-600 border-amber-500/30",
     High: "bg-orange-500/15 text-orange-600 border-orange-500/30",
-    "High Risk": "bg-orange-500/15 text-orange-600 border-orange-500/30",
     Critical: "bg-red-500/15 text-red-600 border-red-500/30",
   };
   return <Badge variant="outline" className={map[level] ?? ""}>{level}</Badge>;
@@ -82,20 +69,13 @@ function statusBadge(s: string) {
 }
 
 function toCSV(rows: Log[]) {
-  const headers = [
-    "id", "created_at", "ticket_id", "conversation_id", "sender",
-    "risk_score", "risk_level", "status_label", "action_taken",
-    "sentiment", "pii_detected", "compliance_status", "source",
-    "message_preview", "governance_explanation", "identified_risks",
-  ];
+  const headers = ["id", "created_at", "risk_score", "risk_level", "compliance_status", "source", "prompt", "response", "identified_risks"];
   const escape = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const lines = [headers.join(",")];
   for (const r of rows) {
     lines.push([
-      r.id, r.created_at, r.ticket_id ?? "", r.conversation_id ?? "", r.sender ?? "",
-      r.risk_score, r.risk_level, r.status_label ?? "", r.action_taken ?? "",
-      r.sentiment ?? "", JSON.stringify(r.pii_detected ?? []), r.compliance_status, r.source,
-      r.message_preview ?? "", r.governance_explanation ?? "", JSON.stringify(r.identified_risks ?? []),
+      r.id, r.created_at, r.risk_score, r.risk_level, r.compliance_status, r.source,
+      r.prompt, r.response, JSON.stringify(r.identified_risks ?? []),
     ].map(escape).join(","));
   }
   return lines.join("\n");
@@ -118,18 +98,7 @@ export default function GovernancePage() {
   const evalFn = useServerFn(evaluateCompliance);
   const reviewFn = useServerFn(reviewComplianceLog);
   const reportFn = useServerFn(complianceReport);
-  const backfillFn = useServerFn(adminBackfillTicketCompliance);
   const qc = useQueryClient();
-
-  const backfillMut = useMutation({
-    mutationFn: (force: boolean) => backfillFn({ data: { force } }),
-    onSuccess: (r: { processed: number; evaluated: number; skipped: number; failed: number }) => {
-      toast.success(`Evaluated ${r.evaluated} ticket(s) • skipped ${r.skipped} • failed ${r.failed}`);
-      qc.invalidateQueries({ queryKey: ["compliance-dash"] });
-      qc.invalidateQueries({ queryKey: ["compliance-logs"] });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
 
   const dashQ = useQuery({ queryKey: ["compliance-dash"], queryFn: () => dashFn(), enabled });
   const logsQ = useQuery({ queryKey: ["compliance-logs"], queryFn: () => logsFn({ data: {} }), enabled });
@@ -176,11 +145,7 @@ export default function GovernancePage() {
     return logs.filter((l) => {
       if (filterLevel !== "all" && l.risk_level !== filterLevel) return false;
       if (filterStatus !== "all" && l.compliance_status !== filterStatus) return false;
-      if (search) {
-        const s = search.toLowerCase();
-        const hay = `${l.message_preview ?? ""} ${l.prompt ?? ""} ${l.response ?? ""} ${l.sender ?? ""}`.toLowerCase();
-        if (!hay.includes(s)) return false;
-      }
+      if (search && !(l.prompt?.toLowerCase().includes(search.toLowerCase()) || l.response?.toLowerCase().includes(search.toLowerCase()))) return false;
       return true;
     });
   }, [logs, filterLevel, filterStatus, search]);
@@ -225,16 +190,6 @@ export default function GovernancePage() {
             {userViolationCounts.length} user(s) with 3+ high-risk violations
           </div>
         )}
-        <div className="flex items-center gap-2 ml-auto">
-          <Button size="sm" variant="outline" onClick={() => backfillMut.mutate(false)} disabled={backfillMut.isPending}>
-            {backfillMut.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5 mr-1.5" />}
-            Evaluate new tickets
-          </Button>
-          <Button size="sm" onClick={() => backfillMut.mutate(true)} disabled={backfillMut.isPending}>
-            {backfillMut.isPending ? <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> : <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />}
-            Re-evaluate all tickets
-          </Button>
-        </div>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -357,42 +312,31 @@ export default function GovernancePage() {
               <table className="w-full text-sm">
                 <thead className="text-xs uppercase text-muted-foreground border-b">
                   <tr>
-                    <th className="text-left py-2 px-2">Timestamp</th>
-                    <th className="text-left py-2 px-2">Sender</th>
-                    <th className="text-left py-2 px-2">Ticket</th>
-                    <th className="text-left py-2 px-2">Status</th>
+                    <th className="text-left py-2 px-2">Created</th>
+                    <th className="text-left py-2 px-2">Risk</th>
                     <th className="text-left py-2 px-2">Score</th>
-                    <th className="text-left py-2 px-2">Action</th>
-                    <th className="text-left py-2 px-2">Sentiment</th>
-                    <th className="text-left py-2 px-2">PII</th>
-                    <th className="text-left py-2 px-2">Message</th>
+                    <th className="text-left py-2 px-2">Status</th>
+                    <th className="text-left py-2 px-2">Source</th>
+                    <th className="text-left py-2 px-2">Prompt</th>
                     <th className="py-2 px-2"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((l) => {
-                    const status = l.status_label
-                      ?? (l.risk_level === "Low" ? "Safe" : l.risk_level === "Medium" ? "Warning" : l.risk_level === "High" ? "High Risk" : "Critical");
-                    const pii = Array.isArray(l.pii_detected) ? l.pii_detected : [];
-                    return (
-                      <tr key={l.id} className="border-b hover:bg-muted/30">
-                        <td className="py-2 px-2 text-xs whitespace-nowrap">{new Date(l.created_at).toLocaleString()}</td>
-                        <td className="py-2 px-2 text-xs">{l.sender ?? "AI"}</td>
-                        <td className="py-2 px-2 font-mono text-[10px]">{l.ticket_id ? l.ticket_id.slice(0, 8) : "—"}</td>
-                        <td className="py-2 px-2">{riskBadge(status)}</td>
-                        <td className="py-2 px-2 font-mono text-xs">{l.risk_score}</td>
-                        <td className="py-2 px-2 text-xs">{l.action_taken ?? "Passed"}</td>
-                        <td className="py-2 px-2 text-xs">{l.sentiment ?? "—"}</td>
-                        <td className="py-2 px-2 text-xs">{pii.length > 0 ? <Badge variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">{pii.length}</Badge> : "—"}</td>
-                        <td className="py-2 px-2 max-w-md truncate">{l.message_preview ?? l.response ?? l.prompt ?? ""}</td>
-                        <td className="py-2 px-2 text-right">
-                          <Button size="sm" variant="outline" onClick={() => { setSelected(l); setReviewNotes(l.review_notes ?? ""); setOverride(""); }}>View</Button>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                  {filtered.map((l) => (
+                    <tr key={l.id} className="border-b hover:bg-muted/30">
+                      <td className="py-2 px-2 text-xs whitespace-nowrap">{new Date(l.created_at).toLocaleString()}</td>
+                      <td className="py-2 px-2">{riskBadge(l.risk_level)}</td>
+                      <td className="py-2 px-2 font-mono text-xs">{l.risk_score}</td>
+                      <td className="py-2 px-2">{statusBadge(l.compliance_status)}</td>
+                      <td className="py-2 px-2 text-xs">{l.source}</td>
+                      <td className="py-2 px-2 max-w-md truncate">{l.prompt}</td>
+                      <td className="py-2 px-2 text-right">
+                        <Button size="sm" variant="outline" onClick={() => { setSelected(l); setReviewNotes(l.review_notes ?? ""); setOverride(""); }}>View</Button>
+                      </td>
+                    </tr>
+                  ))}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={10} className="py-8 text-center text-muted-foreground text-sm">No logs found</td></tr>
+                    <tr><td colSpan={7} className="py-8 text-center text-muted-foreground text-sm">No logs found</td></tr>
                   )}
                 </tbody>
               </table>
@@ -449,9 +393,8 @@ export default function GovernancePage() {
                 </div>
                 <Button size="sm" variant="outline" onClick={() => { setSelected(l); setReviewNotes(l.review_notes ?? ""); setOverride(""); }}>Review</Button>
               </div>
-              <div className="text-sm"><span className="text-muted-foreground">Sender:</span> {l.sender ?? "AI"} · <span className="text-muted-foreground">Action:</span> {l.action_taken ?? "—"}</div>
-              <div className="text-sm"><span className="text-muted-foreground">Message:</span> {(l.message_preview ?? l.response ?? "").slice(0, 240)}</div>
-              {l.governance_explanation && <div className="text-xs text-muted-foreground">{l.governance_explanation}</div>}
+              <div className="text-sm"><span className="text-muted-foreground">Prompt:</span> {l.prompt.slice(0, 200)}</div>
+              <div className="text-sm"><span className="text-muted-foreground">Response:</span> {l.response.slice(0, 200)}</div>
             </Card>
           ))}
         </TabsContent>
@@ -503,39 +446,16 @@ export default function GovernancePage() {
           {selected && (
             <div className="space-y-3 text-sm">
               <div className="flex gap-2 flex-wrap items-center">
-                {riskBadge(selected.status_label ?? selected.risk_level)} {statusBadge(selected.compliance_status)}
+                {riskBadge(selected.risk_level)} {statusBadge(selected.compliance_status)}
                 <span className="text-xs text-muted-foreground">Score {selected.risk_score} · {selected.source}</span>
-                <span className="text-xs text-muted-foreground">Action: {selected.action_taken ?? "Passed"}</span>
               </div>
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div><span className="text-muted-foreground">Sender:</span> {selected.sender ?? "AI"}</div>
-                <div><span className="text-muted-foreground">Sentiment:</span> {selected.sentiment ?? "—"}</div>
-                <div className="font-mono"><span className="text-muted-foreground font-sans">Ticket:</span> {selected.ticket_id ?? "—"}</div>
-                <div className="font-mono"><span className="text-muted-foreground font-sans">Conversation:</span> {selected.conversation_id ?? "—"}</div>
-              </div>
-              {Array.isArray(selected.pii_detected) && selected.pii_detected.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase text-muted-foreground">PII detected</div>
-                  <div className="flex gap-1 flex-wrap">{selected.pii_detected.map((p, i) => (
-                    <Badge key={i} variant="outline" className="bg-amber-500/10 text-amber-700 border-amber-500/30">{p}</Badge>
-                  ))}</div>
-                </div>
-              )}
-              {selected.governance_explanation && (
-                <div>
-                  <div className="text-xs uppercase text-muted-foreground">Governance explanation</div>
-                  <div className="border rounded p-2 bg-muted/30 text-xs">{selected.governance_explanation}</div>
-                </div>
-              )}
-              {selected.prompt && (
-                <div>
-                  <div className="text-xs uppercase text-muted-foreground">Context</div>
-                  <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30 text-xs">{selected.prompt}</div>
-                </div>
-              )}
               <div>
-                <div className="text-xs uppercase text-muted-foreground">Message</div>
-                <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30">{selected.message_preview ?? selected.response ?? ""}</div>
+                <div className="text-xs uppercase text-muted-foreground">Prompt</div>
+                <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30">{selected.prompt}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">Response</div>
+                <div className="whitespace-pre-wrap border rounded p-2 bg-muted/30">{selected.response}</div>
               </div>
               {selected.identified_risks?.length > 0 && (
                 <div>

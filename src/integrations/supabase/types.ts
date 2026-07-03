@@ -50,45 +50,6 @@ export type Database = {
         }
         Relationships: []
       }
-      ai_error_logs: {
-        Row: {
-          alert_triggered: boolean
-          attempts: number
-          conversation_id: string | null
-          created_at: string
-          error_type: string
-          function_name: string
-          id: string
-          message: string
-          occurred_at: string
-          ticket_id: string | null
-        }
-        Insert: {
-          alert_triggered?: boolean
-          attempts?: number
-          conversation_id?: string | null
-          created_at?: string
-          error_type: string
-          function_name: string
-          id?: string
-          message: string
-          occurred_at?: string
-          ticket_id?: string | null
-        }
-        Update: {
-          alert_triggered?: boolean
-          attempts?: number
-          conversation_id?: string | null
-          created_at?: string
-          error_type?: string
-          function_name?: string
-          id?: string
-          message?: string
-          occurred_at?: string
-          ticket_id?: string | null
-        }
-        Relationships: []
-      }
       app_users: {
         Row: {
           created_at: string
@@ -160,79 +121,52 @@ export type Database = {
       }
       compliance_logs: {
         Row: {
-          action_taken: string | null
           compliance_status: string
-          conversation_id: string | null
           created_at: string
-          governance_explanation: string | null
           id: string
           identified_risks: Json
-          message_preview: string | null
-          pii_detected: Json
-          prompt: string | null
-          response: string | null
+          prompt: string
+          response: string
           review_notes: string | null
           reviewed_at: string | null
           reviewed_by: string | null
           risk_level: string
           risk_score: number
-          sender: string | null
-          sentiment: string | null
           source: string
-          status_label: string | null
-          ticket_id: string | null
           transparency_notes: Json
           updated_at: string
           user_id: string | null
         }
         Insert: {
-          action_taken?: string | null
           compliance_status?: string
-          conversation_id?: string | null
           created_at?: string
-          governance_explanation?: string | null
           id?: string
           identified_risks?: Json
-          message_preview?: string | null
-          pii_detected?: Json
-          prompt?: string | null
-          response?: string | null
+          prompt: string
+          response: string
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           risk_level?: string
           risk_score?: number
-          sender?: string | null
-          sentiment?: string | null
           source?: string
-          status_label?: string | null
-          ticket_id?: string | null
           transparency_notes?: Json
           updated_at?: string
           user_id?: string | null
         }
         Update: {
-          action_taken?: string | null
           compliance_status?: string
-          conversation_id?: string | null
           created_at?: string
-          governance_explanation?: string | null
           id?: string
           identified_risks?: Json
-          message_preview?: string | null
-          pii_detected?: Json
-          prompt?: string | null
-          response?: string | null
+          prompt?: string
+          response?: string
           review_notes?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
           risk_level?: string
           risk_score?: number
-          sender?: string | null
-          sentiment?: string | null
           source?: string
-          status_label?: string | null
-          ticket_id?: string | null
           transparency_notes?: Json
           updated_at?: string
           user_id?: string | null
