@@ -9,8 +9,13 @@ const RISK_CATEGORIES = [
   "racial_bias",
   "religious_bias",
   "political_bias",
+  "age_bias",
+  "disability_bias",
+  "socioeconomic_bias",
   "cultural_bias",
+  "other_bias",
   "toxic_language",
+  "harassment",
   "harmful_stereotypes",
   "misinformation",
   "privacy_violation",
@@ -22,24 +27,26 @@ type StatusLabel = "Safe" | "Warning" | "High Risk" | "Critical";
 type ActionTaken = "Passed" | "Flagged" | "Escalated" | "Blocked";
 export type Sender = "User" | "AI" | "Admin";
 
+// Spec thresholds: Safe 0-20, Warning 21-50, High Risk 51-80, Critical 81-100
 function levelFromScore(score: number): RiskLevel {
-  if (score >= 76) return "Critical";
+  if (score >= 81) return "Critical";
   if (score >= 51) return "High";
-  if (score >= 26) return "Medium";
+  if (score >= 21) return "Medium";
   return "Low";
 }
 
 function statusFromScore(score: number): StatusLabel {
-  if (score >= 76) return "Critical";
+  if (score >= 81) return "Critical";
   if (score >= 51) return "High Risk";
-  if (score >= 26) return "Warning";
+  if (score >= 21) return "Warning";
   return "Safe";
 }
 
+// Action mapping strictly follows status: Passed=Safe, Flagged=Warning, Escalated=High Risk, Blocked=Critical
 function actionFromScore(score: number): ActionTaken {
-  if (score >= 90) return "Blocked";
-  if (score >= 60) return "Escalated";
-  if (score >= 26) return "Flagged";
+  if (score >= 81) return "Blocked";
+  if (score >= 51) return "Escalated";
+  if (score >= 21) return "Flagged";
   return "Passed";
 }
 
