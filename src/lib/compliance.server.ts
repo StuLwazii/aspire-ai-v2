@@ -158,6 +158,7 @@ export async function evaluateMessageAndLog(args: EvaluateMessageArgs): Promise<
       args.sender,
       msg.slice(0, 12000),
       (args.contextText ?? "").slice(0, 8000),
+      { ticketId: args.ticketId ?? null, conversationId: args.conversationId ?? null },
     );
 
     const statusLabel = statusFromScore(evalResult.riskScore);
