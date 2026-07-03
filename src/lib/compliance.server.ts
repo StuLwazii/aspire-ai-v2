@@ -3,6 +3,7 @@
 // surfaces remain untouched — governance data is visible only inside the
 // AI Governance & Compliance page.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { callAIWithRetry } from "@/lib/ai-retry.server";
 
 const RISK_CATEGORIES = [
   "gender_bias",
