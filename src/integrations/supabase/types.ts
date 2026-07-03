@@ -50,6 +50,45 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_error_logs: {
+        Row: {
+          alert_triggered: boolean
+          attempts: number
+          conversation_id: string | null
+          created_at: string
+          error_type: string
+          function_name: string
+          id: string
+          message: string
+          occurred_at: string
+          ticket_id: string | null
+        }
+        Insert: {
+          alert_triggered?: boolean
+          attempts?: number
+          conversation_id?: string | null
+          created_at?: string
+          error_type: string
+          function_name: string
+          id?: string
+          message: string
+          occurred_at?: string
+          ticket_id?: string | null
+        }
+        Update: {
+          alert_triggered?: boolean
+          attempts?: number
+          conversation_id?: string | null
+          created_at?: string
+          error_type?: string
+          function_name?: string
+          id?: string
+          message?: string
+          occurred_at?: string
+          ticket_id?: string | null
+        }
+        Relationships: []
+      }
       app_users: {
         Row: {
           created_at: string
