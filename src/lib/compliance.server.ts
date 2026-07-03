@@ -3,6 +3,7 @@
 // surfaces remain untouched — governance data is visible only inside the
 // AI Governance & Compliance page.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { callAIWithRetry } from "@/lib/ai-retry.server";
 
 const RISK_CATEGORIES = [
   "gender_bias",
@@ -60,13 +61,9 @@ type Evaluation = {
   explanation: string;
 };
 
-async function evaluateWithAI(sender: Sender, message: string, contextText: string): Promise<Evaluation> {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
+async function evaluateWithAI(sender: Sender, message: string, contextText: string, ctx?: { ticketId?: string | null; conversationId?: string | null }): Promise<Evaluation> {
+  const json = (await callAIWithRetry(
+    {
       model: "google/gemini-2.5-flash",
       messages: [
         {
@@ -87,10 +84,9 @@ Score 0 for benign safe messages. Increase for bias, toxicity, misinformation, h
         },
         { role: "user", content: `CONTEXT:\n${contextText || "(no prior context)"}\n\nMESSAGE (${sender}):\n${message}` },
       ],
-    }),
-  });
-  if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
-  const json = await res.json();
+    },
+    { fnName: "evaluateMessageAndLog", ticketId: ctx?.ticketId ?? null, conversationId: ctx?.conversationId ?? null },
+  )) as { choices: Array<{ message: { content?: string } }> };
   const raw = json.choices?.[0]?.message?.content ?? "{}";
   const cleaned = String(raw).replace(/```json|```/g, "").trim();
   let parsed: Partial<Evaluation> & { transparencyNotes?: Partial<Evaluation["transparencyNotes"]> } = {};
@@ -162,6 +158,7 @@ export async function evaluateMessageAndLog(args: EvaluateMessageArgs): Promise<
       args.sender,
       msg.slice(0, 12000),
       (args.contextText ?? "").slice(0, 8000),
+      { ticketId: args.ticketId ?? null, conversationId: args.conversationId ?? null },
     );
 
     const statusLabel = statusFromScore(evalResult.riskScore);

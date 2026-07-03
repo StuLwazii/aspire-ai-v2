@@ -20,18 +20,12 @@ const TONE_PROMPTS: Record<Category, string> = {
   Operations: "Urgent + action-oriented. Confirm urgency, give clear numbered steps, state priority (P1/P2/P3).",
 };
 
-async function callAI(body: unknown) {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 429) throw new Error("AI rate limit reached. Please try again shortly.");
-  if (res.status === 402) throw new Error("AI credits exhausted. Please top up in Workspace settings.");
-  if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
-  return res.json();
+import { callAIWithRetry } from "@/lib/ai-retry.server";
+
+async function callAI(body: unknown, fnName = "tickets.callAI", ctx?: { ticketId?: string | null; conversationId?: string | null }) {
+  return (await callAIWithRetry(body, { fnName, ticketId: ctx?.ticketId ?? null, conversationId: ctx?.conversationId ?? null })) as {
+    choices: Array<{ message: { content?: string; tool_calls?: Array<{ function: { arguments: string } }> } }>;
+  };
 }
 
 type TriageItem = {

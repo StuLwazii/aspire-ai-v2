@@ -32,18 +32,12 @@ function levelFromScore(score: number): RiskLevel {
   return "Low";
 }
 
+import { callAIWithRetry } from "@/lib/ai-retry.server";
+
 async function callAI(body: unknown) {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 429) throw new Error("AI rate limit reached. Try again shortly.");
-  if (res.status === 402) throw new Error("AI credits exhausted.");
-  if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
-  return res.json();
+  return (await callAIWithRetry(body, { fnName: "compliance.evaluateManual" })) as {
+    choices: Array<{ message: { content?: string } }>;
+  };
 }
 
 async function evaluateWithAI(prompt: string, response: string) {
