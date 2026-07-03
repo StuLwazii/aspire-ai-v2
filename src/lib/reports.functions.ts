@@ -122,7 +122,7 @@ async function generateReportContent(department: string, kpis: ReturnType<typeof
       },
     }],
     tool_choice: { type: "function", function: { name: "submit_report" } },
-  });
+  }, "adminGenerateReport");
 
   const args = json.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
   if (!args) throw new Error("AI returned no report content");
