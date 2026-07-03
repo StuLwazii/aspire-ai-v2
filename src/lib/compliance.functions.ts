@@ -7,20 +7,28 @@ const RISK_CATEGORIES = [
   "racial_bias",
   "religious_bias",
   "political_bias",
+  "age_bias",
+  "disability_bias",
+  "socioeconomic_bias",
   "cultural_bias",
+  "other_bias",
   "toxic_language",
+  "harassment",
   "harmful_stereotypes",
   "misinformation",
+  "privacy_violation",
+  "policy_violation",
 ] as const;
 
 export type RiskCategory = (typeof RISK_CATEGORIES)[number];
 
 export type RiskLevel = "Low" | "Medium" | "High" | "Critical";
 
+// Spec thresholds: Safe 0-20, Warning 21-50, High Risk 51-80, Critical 81-100
 function levelFromScore(score: number): RiskLevel {
-  if (score >= 76) return "Critical";
+  if (score >= 81) return "Critical";
   if (score >= 51) return "High";
-  if (score >= 26) return "Medium";
+  if (score >= 21) return "Medium";
   return "Low";
 }
 
