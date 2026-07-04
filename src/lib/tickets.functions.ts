@@ -734,10 +734,11 @@ export const agentRespondToTicket = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
     }
     if (data.response) {
-      const { error } = await supabaseAdmin.from("conversations").insert({
+      const { data: inserted, error } = await supabaseAdmin.from("conversations").insert({
         ticket_id: data.ticketId, role: "assistant", message: data.response,
-      });
+      }).select();
       if (error) throw new Error(error.message);
+      fireGovernance((inserted ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })), "Admin");
     }
     if (data.status === "resolved" && p.status !== "resolved") {
       await bumpAgentWorkload(me.id, -1);
