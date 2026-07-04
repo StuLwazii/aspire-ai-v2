@@ -372,9 +372,10 @@ export const markUserResolution = createServerFn({ method: "POST" })
 
     if (agent) await bumpAgentWorkload(agent.id, +1);
 
-    await supabaseAdmin.from("conversations").insert({
+    const { data: escMsgs } = await supabaseAdmin.from("conversations").insert({
       ticket_id: data.ticketId, role: "assistant", message: text,
-    });
+    }).select();
+    fireGovernance((escMsgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
 
     return { escalated: true, assignedAgentName: agent?.full_name ?? null, expectedResponse: eta };
   });
