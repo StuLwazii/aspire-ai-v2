@@ -19,6 +19,7 @@ import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedTicketsRouteImport } from './routes/_authenticated/tickets'
 import { Route as AuthenticatedPredictionsRouteImport } from './routes/_authenticated/predictions'
 import { Route as AuthenticatedMyQueueRouteImport } from './routes/_authenticated/my-queue'
+import { Route as AuthenticatedGovernanceRouteImport } from './routes/_authenticated/governance'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
 import { Route as AuthenticatedAnalyticsRouteImport } from './routes/_authenticated/analytics'
 import { Route as AuthenticatedAgentsRouteImport } from './routes/_authenticated/agents'
@@ -73,6 +74,11 @@ const AuthenticatedMyQueueRoute = AuthenticatedMyQueueRouteImport.update({
   path: '/my-queue',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedGovernanceRoute = AuthenticatedGovernanceRouteImport.update({
+  id: '/governance',
+  path: '/governance',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -97,6 +103,7 @@ export interface FileRoutesByFullPath {
   '/agents': typeof AuthenticatedAgentsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/governance': typeof AuthenticatedGovernanceRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
   '/predictions': typeof AuthenticatedPredictionsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
@@ -111,6 +118,7 @@ export interface FileRoutesByTo {
   '/agents': typeof AuthenticatedAgentsRoute
   '/analytics': typeof AuthenticatedAnalyticsRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
+  '/governance': typeof AuthenticatedGovernanceRoute
   '/my-queue': typeof AuthenticatedMyQueueRoute
   '/predictions': typeof AuthenticatedPredictionsRoute
   '/tickets': typeof AuthenticatedTicketsRoute
@@ -127,6 +135,7 @@ export interface FileRoutesById {
   '/_authenticated/agents': typeof AuthenticatedAgentsRoute
   '/_authenticated/analytics': typeof AuthenticatedAnalyticsRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
+  '/_authenticated/governance': typeof AuthenticatedGovernanceRoute
   '/_authenticated/my-queue': typeof AuthenticatedMyQueueRoute
   '/_authenticated/predictions': typeof AuthenticatedPredictionsRoute
   '/_authenticated/tickets': typeof AuthenticatedTicketsRoute
@@ -143,6 +152,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/analytics'
     | '/dashboard'
+    | '/governance'
     | '/my-queue'
     | '/predictions'
     | '/tickets'
@@ -157,6 +167,7 @@ export interface FileRouteTypes {
     | '/agents'
     | '/analytics'
     | '/dashboard'
+    | '/governance'
     | '/my-queue'
     | '/predictions'
     | '/tickets'
@@ -172,6 +183,7 @@ export interface FileRouteTypes {
     | '/_authenticated/agents'
     | '/_authenticated/analytics'
     | '/_authenticated/dashboard'
+    | '/_authenticated/governance'
     | '/_authenticated/my-queue'
     | '/_authenticated/predictions'
     | '/_authenticated/tickets'
@@ -260,6 +272,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedMyQueueRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/governance': {
+      id: '/_authenticated/governance'
+      path: '/governance'
+      fullPath: '/governance'
+      preLoaderRoute: typeof AuthenticatedGovernanceRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/dashboard': {
       id: '/_authenticated/dashboard'
       path: '/dashboard'
@@ -288,6 +307,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAgentsRoute: typeof AuthenticatedAgentsRoute
   AuthenticatedAnalyticsRoute: typeof AuthenticatedAnalyticsRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
+  AuthenticatedGovernanceRoute: typeof AuthenticatedGovernanceRoute
   AuthenticatedMyQueueRoute: typeof AuthenticatedMyQueueRoute
   AuthenticatedPredictionsRoute: typeof AuthenticatedPredictionsRoute
   AuthenticatedTicketsRoute: typeof AuthenticatedTicketsRoute
@@ -298,6 +318,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAgentsRoute: AuthenticatedAgentsRoute,
   AuthenticatedAnalyticsRoute: AuthenticatedAnalyticsRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
+  AuthenticatedGovernanceRoute: AuthenticatedGovernanceRoute,
   AuthenticatedMyQueueRoute: AuthenticatedMyQueueRoute,
   AuthenticatedPredictionsRoute: AuthenticatedPredictionsRoute,
   AuthenticatedTicketsRoute: AuthenticatedTicketsRoute,
@@ -319,3 +340,13 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { startInstance } from './start.ts'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
+  }
+}
