@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { getMyRole } from "@/lib/tickets.functions";
-import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck, Inbox, Moon, Sun, BarChart3, TrendingUp } from "lucide-react";
+import { LayoutDashboard, Ticket, LogOut, Users, ShieldCheck, Inbox, Moon, Sun, BarChart3, TrendingUp, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { useTheme } from "@/components/theme-provider";
@@ -127,6 +127,7 @@ function AuthLayout() {
           {isAdmin && navItem("/dashboard", "Dashboard", LayoutDashboard)}
           {isAdmin && navItem("/analytics", "Analytics & Reports", BarChart3)}
           {isAdmin && navItem("/predictions", "Predictive Insights", TrendingUp)}
+          {isAdmin && navItem("/governance", "AI Governance", Scale)}
           {isAdmin && navItem("/tickets", "Tickets", Ticket)}
           {isAdmin && navItem("/agents", "Agents", Users)}
           {isAdmin && navItem("/users", "Users & Admins", ShieldCheck)}

@@ -3,6 +3,21 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
+import { scheduleGovernanceAnalysis, type GovSender } from "@/lib/governance.functions";
+
+// Fire-and-forget governance analysis. Never awaited from a user-facing path.
+function fireGovernance(rows: Array<{ id: string; ticket_id: string | null; role: string; message: string; created_at?: string }>, senderOverride?: GovSender) {
+  for (const r of rows) {
+    const sender: GovSender = senderOverride ?? (r.role === "user" ? "User" : "AI");
+    void scheduleGovernanceAnalysis({
+      conversationId: r.id,
+      ticketId: r.ticket_id,
+      sender,
+      message: r.message,
+      createdAt: r.created_at,
+    });
+  }
+}
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
 const STATUSES = ["open", "in_progress", "escalated", "resolved"] as const;
@@ -264,12 +279,16 @@ export const startConversation = createServerFn({ method: "POST" })
       ]).select();
     if (me) throw new Error(me.message);
 
+    // Analyze primary conversation messages
+    fireGovernance((msgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
+
     // For sibling tickets, seed their own conversation with the excerpt + their assistant reply
     for (const c of created.slice(1)) {
-      await supabaseAdmin.from("conversations").insert([
+      const { data: siblingMsgs } = await supabaseAdmin.from("conversations").insert([
         { ticket_id: c.ticket.id, role: "user", message: c.item.excerpt },
         { ticket_id: c.ticket.id, role: "assistant", message: c.assistantText },
-      ]);
+      ]).select();
+      fireGovernance((siblingMsgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
     }
 
     return {
@@ -309,6 +328,7 @@ export const continueConversation = createServerFn({ method: "POST" })
         { ticket_id: ticket.id, role: "assistant", message: reply },
       ]).select();
     if (me) throw new Error(me.message);
+    fireGovernance((msgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
     return { messages: msgs ?? [] };
   });
 
@@ -327,10 +347,11 @@ export const markUserResolution = createServerFn({ method: "POST" })
         status: "resolved",
         resolved_by_user: true,
       } as never).eq("id", data.ticketId);
-      await supabaseAdmin.from("conversations").insert({
+      const { data: ack } = await supabaseAdmin.from("conversations").insert({
         ticket_id: data.ticketId, role: "assistant",
         message: "Glad we could help! Marking this ticket as resolved. 🎉",
-      });
+      }).select();
+      fireGovernance((ack ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
       return { escalated: false, assignedAgentName: null, expectedResponse: null };
     }
 
@@ -351,9 +372,10 @@ export const markUserResolution = createServerFn({ method: "POST" })
 
     if (agent) await bumpAgentWorkload(agent.id, +1);
 
-    await supabaseAdmin.from("conversations").insert({
+    const { data: escMsgs } = await supabaseAdmin.from("conversations").insert({
       ticket_id: data.ticketId, role: "assistant", message: text,
-    });
+    }).select();
+    fireGovernance((escMsgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
 
     return { escalated: true, assignedAgentName: agent?.full_name ?? null, expectedResponse: eta };
   });
@@ -712,10 +734,11 @@ export const agentRespondToTicket = createServerFn({ method: "POST" })
       if (error) throw new Error(error.message);
     }
     if (data.response) {
-      const { error } = await supabaseAdmin.from("conversations").insert({
+      const { data: inserted, error } = await supabaseAdmin.from("conversations").insert({
         ticket_id: data.ticketId, role: "assistant", message: data.response,
-      });
+      }).select();
       if (error) throw new Error(error.message);
+      fireGovernance((inserted ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })), "Admin");
     }
     if (data.status === "resolved" && p.status !== "resolved") {
       await bumpAgentWorkload(me.id, -1);
