@@ -328,6 +328,7 @@ export const continueConversation = createServerFn({ method: "POST" })
         { ticket_id: ticket.id, role: "assistant", message: reply },
       ]).select();
     if (me) throw new Error(me.message);
+    fireGovernance((msgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
     return { messages: msgs ?? [] };
   });
 
@@ -346,10 +347,11 @@ export const markUserResolution = createServerFn({ method: "POST" })
         status: "resolved",
         resolved_by_user: true,
       } as never).eq("id", data.ticketId);
-      await supabaseAdmin.from("conversations").insert({
+      const { data: ack } = await supabaseAdmin.from("conversations").insert({
         ticket_id: data.ticketId, role: "assistant",
         message: "Glad we could help! Marking this ticket as resolved. 🎉",
-      });
+      }).select();
+      fireGovernance((ack ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
       return { escalated: false, assignedAgentName: null, expectedResponse: null };
     }
 
