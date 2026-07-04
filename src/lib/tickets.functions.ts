@@ -279,12 +279,16 @@ export const startConversation = createServerFn({ method: "POST" })
       ]).select();
     if (me) throw new Error(me.message);
 
+    // Analyze primary conversation messages
+    fireGovernance((msgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
+
     // For sibling tickets, seed their own conversation with the excerpt + their assistant reply
     for (const c of created.slice(1)) {
-      await supabaseAdmin.from("conversations").insert([
+      const { data: siblingMsgs } = await supabaseAdmin.from("conversations").insert([
         { ticket_id: c.ticket.id, role: "user", message: c.item.excerpt },
         { ticket_id: c.ticket.id, role: "assistant", message: c.assistantText },
-      ]);
+      ]).select();
+      fireGovernance((siblingMsgs ?? []).map((m) => ({ id: m.id, ticket_id: m.ticket_id, role: m.role, message: m.message, created_at: m.created_at })));
     }
 
     return {
