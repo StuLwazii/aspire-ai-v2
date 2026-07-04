@@ -3,6 +3,21 @@ import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { DEPARTMENT_OPTIONS } from "@/lib/constants";
+import { scheduleGovernanceAnalysis, type GovSender } from "@/lib/governance.functions";
+
+// Fire-and-forget governance analysis. Never awaited from a user-facing path.
+function fireGovernance(rows: Array<{ id: string; ticket_id: string | null; role: string; message: string; created_at?: string }>, senderOverride?: GovSender) {
+  for (const r of rows) {
+    const sender: GovSender = senderOverride ?? (r.role === "user" ? "User" : "AI");
+    void scheduleGovernanceAnalysis({
+      conversationId: r.id,
+      ticketId: r.ticket_id,
+      sender,
+      message: r.message,
+      createdAt: r.created_at,
+    });
+  }
+}
 
 const CATEGORIES = ["HR", "IT", "Finance", "Operations"] as const;
 const STATUSES = ["open", "in_progress", "escalated", "resolved"] as const;
