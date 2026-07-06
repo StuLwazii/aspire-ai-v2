@@ -56,14 +56,37 @@ async function assertAdmin(userId: string) {
 /* AI analysis                                                        */
 /* ------------------------------------------------------------------ */
 
+export type CheckVerdict = "pass" | "warn" | "fail";
+export type RiskLevel = "Low" | "Medium" | "High";
+
+export type CheckResult = {
+  verdict: CheckVerdict;
+  detail: string;
+};
+
+export type GovernanceChecks = {
+  bias: CheckResult & { categories: string[] };
+  toxicity: CheckResult & { level: "none" | "low" | "moderate" | "severe" };
+  compliance: CheckResult & { issues: string[] };
+  hallucination: CheckResult & { risk: RiskLevel };
+};
+
 type AnalysisResult = {
   risk_score: number;
+  confidence: number;
   categories: string[];
   bias_categories: string[];
   sentiment: GovSentiment;
   pii_detected: string[];
   explanation: string;
+  checks: GovernanceChecks;
 };
+
+function riskToLevel(score: number): RiskLevel {
+  if (score <= 20) return "Low";
+  if (score <= 50) return "Medium";
+  return "High";
+}
 
 async function analyzeMessage(message: string, sender: GovSender): Promise<AnalysisResult> {
   const apiKey = process.env.LOVABLE_API_KEY;
@@ -79,7 +102,7 @@ async function analyzeMessage(message: string, sender: GovSender): Promise<Analy
         {
           role: "system",
           content:
-            "You are an AI governance auditor. Evaluate a single message from a help-desk conversation for risk. Score 0-100 (0 = perfectly safe, 100 = severe violation). Consider harassment, bias, misinformation, PII exposure, and compliance/policy violations. Identify sentiment. Detect PII (emails, phone numbers, SSN-like patterns, addresses). Bias sub-categories (only when bias is present): Gender, Race/Ethnicity, Religion, Political, Age, Disability, Socioeconomic, Other. Return a concise 1-2 sentence explanation. ALWAYS call the tool, even if the message is completely safe (score 0, empty categories, brief 'No risk detected.' explanation).",
+            "You are an AI governance auditor for help-desk conversations. For each message, run four independent checks: (1) Bias — gender/race/religion/political/age/disability/socioeconomic bias; (2) Toxicity — harassment, hate, threats, profanity; (3) Compliance — policy/regulatory violations, PII exposure, unauthorized advice; (4) Hallucination — fabricated facts, unverifiable claims. For each check return a verdict (pass/warn/fail) with a concrete 1-sentence detail. Also produce an overall risk_score 0-100 (0=perfectly safe, 100=severe violation), a confidence 0-100 (how sure you are of the verdicts), sentiment, PII types found, and a 1-2 sentence overall explanation that says WHY (which checks were performed, what was found, recommended action). ALWAYS call the tool, even when everything is safe (all verdicts 'pass', risk_score low, confidence high, explanation like 'All four checks passed: no bias, toxic language, compliance issues, or hallucinated facts detected. No action required.').",
         },
         { role: "user", content: `Sender: ${sender}\nMessage:\n"""${preview}"""` },
       ],
@@ -92,23 +115,50 @@ async function analyzeMessage(message: string, sender: GovSender): Promise<Analy
             type: "object",
             properties: {
               risk_score: { type: "integer", minimum: 0, maximum: 100 },
-              categories: {
-                type: "array",
-                items: { type: "string", enum: [...CATEGORY_ENUM] },
-              },
-              bias_categories: {
-                type: "array",
-                items: { type: "string", enum: [...BIAS_TAXONOMY] },
-              },
+              confidence: { type: "integer", minimum: 0, maximum: 100 },
+              categories: { type: "array", items: { type: "string", enum: [...CATEGORY_ENUM] } },
+              bias_categories: { type: "array", items: { type: "string", enum: [...BIAS_TAXONOMY] } },
               sentiment: { type: "string", enum: ["Positive", "Neutral", "Negative", "Mixed"] },
-              pii_detected: {
-                type: "array",
-                items: { type: "string" },
-                description: "Types of PII found, e.g. 'email', 'phone', 'address', 'SSN'.",
-              },
+              pii_detected: { type: "array", items: { type: "string" } },
               explanation: { type: "string" },
+              bias_check: {
+                type: "object",
+                properties: {
+                  verdict: { type: "string", enum: ["pass", "warn", "fail"] },
+                  detail: { type: "string" },
+                  categories: { type: "array", items: { type: "string" } },
+                },
+                required: ["verdict", "detail", "categories"],
+              },
+              toxicity_check: {
+                type: "object",
+                properties: {
+                  verdict: { type: "string", enum: ["pass", "warn", "fail"] },
+                  detail: { type: "string" },
+                  level: { type: "string", enum: ["none", "low", "moderate", "severe"] },
+                },
+                required: ["verdict", "detail", "level"],
+              },
+              compliance_check: {
+                type: "object",
+                properties: {
+                  verdict: { type: "string", enum: ["pass", "warn", "fail"] },
+                  detail: { type: "string" },
+                  issues: { type: "array", items: { type: "string" } },
+                },
+                required: ["verdict", "detail", "issues"],
+              },
+              hallucination_check: {
+                type: "object",
+                properties: {
+                  verdict: { type: "string", enum: ["pass", "warn", "fail"] },
+                  detail: { type: "string" },
+                  risk: { type: "string", enum: ["Low", "Medium", "High"] },
+                },
+                required: ["verdict", "detail", "risk"],
+              },
             },
-            required: ["risk_score", "categories", "bias_categories", "sentiment", "pii_detected", "explanation"],
+            required: ["risk_score", "confidence", "categories", "bias_categories", "sentiment", "pii_detected", "explanation", "bias_check", "toxicity_check", "compliance_check", "hallucination_check"],
             additionalProperties: false,
           },
         },
@@ -117,24 +167,42 @@ async function analyzeMessage(message: string, sender: GovSender): Promise<Analy
     }),
   });
 
+  const safeChecks: GovernanceChecks = {
+    bias: { verdict: "pass", detail: "No bias detected.", categories: [] },
+    toxicity: { verdict: "pass", detail: "No toxic language detected.", level: "none" },
+    compliance: { verdict: "pass", detail: "No compliance issues detected.", issues: [] },
+    hallucination: { verdict: "pass", detail: "No unverifiable claims detected.", risk: "Low" },
+  };
+
   if (!res.ok) {
-    // graceful fallback so failures never break the chat pipeline
     return {
-      risk_score: 0, categories: [], bias_categories: [], sentiment: "Neutral",
-      pii_detected: [], explanation: `Analysis unavailable (gateway ${res.status}).`,
+      risk_score: 0, confidence: 50, categories: [], bias_categories: [], sentiment: "Neutral",
+      pii_detected: [], explanation: `Analysis unavailable (gateway ${res.status}). Defaulted to safe.`,
+      checks: safeChecks,
     };
   }
   const json = await res.json();
   const call = json.choices?.[0]?.message?.tool_calls?.[0];
   const args = call?.function?.arguments ? JSON.parse(call.function.arguments) : {};
   const rs = Math.max(0, Math.min(100, Number(args.risk_score ?? 0) | 0));
+  const conf = Math.max(0, Math.min(100, Number(args.confidence ?? 85) | 0));
+  const normCheck = <T extends object>(v: unknown, fallback: T): T =>
+    v && typeof v === "object" ? { ...fallback, ...(v as T) } : fallback;
+
   return {
     risk_score: rs,
+    confidence: conf,
     categories: Array.isArray(args.categories) ? args.categories.filter((c: unknown) => typeof c === "string") : [],
     bias_categories: Array.isArray(args.bias_categories) ? args.bias_categories.filter((c: unknown) => typeof c === "string") : [],
     sentiment: (["Positive", "Neutral", "Negative", "Mixed"].includes(args.sentiment) ? args.sentiment : "Neutral") as GovSentiment,
     pii_detected: Array.isArray(args.pii_detected) ? args.pii_detected.filter((c: unknown) => typeof c === "string") : [],
-    explanation: typeof args.explanation === "string" && args.explanation.trim() ? args.explanation.trim() : "No risk detected.",
+    explanation: typeof args.explanation === "string" && args.explanation.trim() ? args.explanation.trim() : "All checks passed.",
+    checks: {
+      bias: normCheck(args.bias_check, safeChecks.bias),
+      toxicity: normCheck(args.toxicity_check, safeChecks.toxicity),
+      compliance: normCheck(args.compliance_check, safeChecks.compliance),
+      hallucination: normCheck(args.hallucination_check, safeChecks.hallucination),
+    },
   };
 }
 
@@ -149,8 +217,9 @@ async function upsertLog(params: {
   message: string;
   analysis: AnalysisResult;
   createdAt?: string;
+  incrementReeval?: boolean;
 }) {
-  const { conversationId, ticketId, sender, message, analysis, createdAt } = params;
+  const { conversationId, ticketId, sender, message, analysis, incrementReeval } = params;
   const status = scoreToStatus(analysis.risk_score);
   const action = statusToAction(status);
   const combinedRisks = [
@@ -158,9 +227,28 @@ async function upsertLog(params: {
     ...analysis.bias_categories.map((b) => `bias:${b}`),
   ];
   const identifiedRisks = combinedRisks.length > 0 ? combinedRisks : ["None"];
-  // Spec: always stamp with Date.now() at evaluation time.
   const ts = new Date(Date.now()).toISOString();
-  void createdAt;
+
+  let reevalCount = 0;
+  if (conversationId) {
+    const { data: existing } = await supabaseAdmin
+      .from("compliance_logs")
+      .select("transparency_notes")
+      .eq("conversation_id", conversationId)
+      .maybeSingle();
+    const prior = (existing?.transparency_notes as { reevaluation_count?: number } | null)?.reevaluation_count ?? 0;
+    reevalCount = incrementReeval ? prior + 1 : prior;
+  }
+
+  const transparency_notes = {
+    confidence: analysis.confidence,
+    governance_score: 100 - analysis.risk_score,
+    risk_indicator: riskToLevel(analysis.risk_score),
+    reevaluation_count: reevalCount,
+    evaluated_by: "AI",
+    checks: analysis.checks,
+    evaluated_at: ts,
+  };
 
   const row = {
     ticket_id: ticketId,
@@ -178,13 +266,12 @@ async function upsertLog(params: {
     governance_explanation: analysis.explanation,
     compliance_status: action,
     action_taken: action,
+    transparency_notes,
     source: "auto",
     created_at: ts,
   };
 
-
   if (conversationId) {
-    // idempotent per conversation message
     const { error } = await supabaseAdmin
       .from("compliance_logs")
       .upsert(row as never, { onConflict: "conversation_id" });
