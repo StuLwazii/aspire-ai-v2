@@ -60,20 +60,24 @@ export function GovernanceDashboard() {
   const statsFn = useServerFn(adminGovernanceStats);
   const evalNewFn = useServerFn(adminEvaluateNewMessages);
   const reevalAllFn = useServerFn(adminReevaluateAll);
-  const sessionStatus = useSupabaseSessionStatus();
-  const authed = sessionStatus === "authenticated";
+  const { status: sessionStatus, accessToken } = useSupabaseSession();
+  const authed = sessionStatus === "authenticated" && !!accessToken;
+
+  if (sessionStatus === "signed-out") {
+    return <Navigate to="/login" />;
+  }
 
   const logsQ = useQuery({
-    queryKey: ["gov-logs"],
+    queryKey: ["gov-logs", accessToken],
     queryFn: () => listFn() as Promise<LogRow[]>,
-    refetchInterval: 15_000,
+    refetchInterval: authed ? 15_000 : false,
     enabled: authed,
     retry: false,
   });
   const statsQ = useQuery({
-    queryKey: ["gov-stats"],
+    queryKey: ["gov-stats", accessToken],
     queryFn: () => statsFn() as Promise<LogRow[]>,
-    refetchInterval: 15_000,
+    refetchInterval: authed ? 15_000 : false,
     enabled: authed,
     retry: false,
   });
