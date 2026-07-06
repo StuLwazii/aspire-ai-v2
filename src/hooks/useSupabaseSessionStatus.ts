@@ -4,19 +4,29 @@ import { supabase } from "@/integrations/supabase/client";
 export type SupabaseSessionStatus = "loading" | "authenticated" | "signed-out";
 
 export function useSupabaseSessionStatus(): SupabaseSessionStatus {
-  const [status, setStatus] = useState<SupabaseSessionStatus>("loading");
+  const { status } = useSupabaseSession();
+  return status;
+}
+
+export function useSupabaseSession() {
+  const [state, setState] = useState<{
+    status: SupabaseSessionStatus;
+    accessToken: string | null;
+  }>({ status: "loading", accessToken: null });
 
   useEffect(() => {
     let alive = true;
 
     supabase.auth.getSession().then(({ data }) => {
       if (!alive) return;
-      setStatus(data.session?.access_token ? "authenticated" : "signed-out");
+      const token = data.session?.access_token ?? null;
+      setState({ status: token ? "authenticated" : "signed-out", accessToken: token });
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!alive) return;
-      setStatus(session?.access_token ? "authenticated" : "signed-out");
+      const token = session?.access_token ?? null;
+      setState({ status: token ? "authenticated" : "signed-out", accessToken: token });
     });
 
     return () => {
@@ -25,5 +35,5 @@ export function useSupabaseSessionStatus(): SupabaseSessionStatus {
     };
   }, []);
 
-  return status;
+  return state;
 }
