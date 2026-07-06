@@ -7,6 +7,7 @@ import {
   adminEvaluateNewMessages,
   adminReevaluateAll,
 } from "@/lib/governance.functions";
+import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,16 +59,22 @@ export function GovernanceDashboard() {
   const statsFn = useServerFn(adminGovernanceStats);
   const evalNewFn = useServerFn(adminEvaluateNewMessages);
   const reevalAllFn = useServerFn(adminReevaluateAll);
+  const sessionStatus = useSupabaseSessionStatus();
+  const authed = sessionStatus === "authenticated";
 
   const logsQ = useQuery({
     queryKey: ["gov-logs"],
     queryFn: () => listFn() as Promise<LogRow[]>,
     refetchInterval: 15_000,
+    enabled: authed,
+    retry: false,
   });
   const statsQ = useQuery({
     queryKey: ["gov-stats"],
     queryFn: () => statsFn() as Promise<LogRow[]>,
     refetchInterval: 15_000,
+    enabled: authed,
+    retry: false,
   });
 
   const [evaluatingNew, setEvaluatingNew] = useState(false);
