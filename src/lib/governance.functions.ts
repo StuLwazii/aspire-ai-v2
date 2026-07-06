@@ -157,25 +157,22 @@ async function upsertLog(params: {
     ...analysis.categories,
     ...analysis.bias_categories.map((b) => `bias:${b}`),
   ];
-  const ts = (() => {
-    if (!createdAt) return new Date().toISOString();
-    const d = new Date(createdAt);
-    // guard against corrupted future dates
-    if (isNaN(d.getTime()) || d.getTime() > Date.now() + 5 * 60 * 1000) return new Date().toISOString();
-    return d.toISOString();
-  })();
+  const identifiedRisks = combinedRisks.length > 0 ? combinedRisks : ["None"];
+  // Spec: always stamp with Date.now() at evaluation time.
+  const ts = new Date(Date.now()).toISOString();
+  void createdAt;
 
   const row = {
     ticket_id: ticketId,
     conversation_id: conversationId,
     sender,
-    message_preview: message.slice(0, 500),
+    message_preview: message.slice(0, 100),
     prompt: sender === "User" ? message.slice(0, 4000) : null,
     response: sender !== "User" ? message.slice(0, 4000) : null,
     risk_score: analysis.risk_score,
     risk_level: status,
     status_label: status,
-    identified_risks: combinedRisks,
+    identified_risks: identifiedRisks,
     sentiment: analysis.sentiment,
     pii_detected: analysis.pii_detected,
     governance_explanation: analysis.explanation,
@@ -184,6 +181,7 @@ async function upsertLog(params: {
     source: "auto",
     created_at: ts,
   };
+
 
   if (conversationId) {
     // idempotent per conversation message
