@@ -62,21 +62,27 @@ export function GovernanceDashboard() {
   const reevalAllFn = useServerFn(adminReevaluateAll);
   const { status: sessionStatus, accessToken } = useSupabaseSession();
   const authed = sessionStatus === "authenticated" && !!accessToken;
-
-  if (sessionStatus === "signed-out") {
-    return <Navigate to="/login" />;
-  }
+  const authHeaders = useMemo(
+    () => (accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined),
+    [accessToken],
+  );
 
   const logsQ = useQuery({
     queryKey: ["gov-logs", accessToken],
-    queryFn: () => listFn() as Promise<LogRow[]>,
+    queryFn: async () => {
+      if (!authHeaders) throw new Error("Unauthorized");
+      return listFn({ headers: authHeaders }) as Promise<LogRow[]>;
+    },
     refetchInterval: authed ? 15_000 : false,
     enabled: authed,
     retry: false,
   });
   const statsQ = useQuery({
     queryKey: ["gov-stats", accessToken],
-    queryFn: () => statsFn() as Promise<LogRow[]>,
+    queryFn: async () => {
+      if (!authHeaders) throw new Error("Unauthorized");
+      return statsFn({ headers: authHeaders }) as Promise<LogRow[]>;
+    },
     refetchInterval: authed ? 15_000 : false,
     enabled: authed,
     retry: false,
@@ -155,23 +161,29 @@ export function GovernanceDashboard() {
   }, [stats]);
 
   const runEvalNew = async () => {
+    if (!authHeaders) return toast.error("Please sign in again.");
     setEvaluatingNew(true);
     try {
-      const r = await evalNewFn();
+      const r = await evalNewFn({ headers: authHeaders });
       toast.success(`Evaluated ${r.processed} new messages (${r.remaining} remaining)`);
       logsQ.refetch(); statsQ.refetch();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
     finally { setEvaluatingNew(false); }
   };
   const runReevalAll = async () => {
+    if (!authHeaders) return toast.error("Please sign in again.");
     setReevalRunning(true);
     try {
-      const r = await reevalAllFn({ data: { limit: 100 } });
+      const r = await reevalAllFn({ data: { limit: 100 }, headers: authHeaders });
       toast.success(`Re-evaluated ${r.processed} messages`);
       logsQ.refetch(); statsQ.refetch();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
     finally { setReevalRunning(false); }
   };
+
+  if (sessionStatus === "signed-out") {
+    return <Navigate to="/admin/login" />;
+  }
 
   const StatCard = ({ label, value, icon: Icon, tone = "default" }: { label: string; value: string | number; icon: typeof Gauge; tone?: "default" | "warn" | "danger" | "ok" }) => {
     const toneCls = tone === "warn" ? "text-yellow-600 dark:text-yellow-400"
