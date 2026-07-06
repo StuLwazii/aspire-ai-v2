@@ -7,7 +7,8 @@ import {
   adminEvaluateNewMessages,
   adminReevaluateAll,
 } from "@/lib/governance.functions";
-import { useSupabaseSessionStatus } from "@/hooks/useSupabaseSessionStatus";
+import { useSupabaseSession } from "@/hooks/useSupabaseSessionStatus";
+import { Navigate } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
