@@ -1,26 +1,41 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import {
   adminListGovernanceLogs,
   adminGovernanceStats,
-  adminEvaluateNewMessages,
-  adminReevaluateAll,
+  adminReevaluateTicket,
 } from "@/lib/governance.functions";
 import { useSupabaseSession } from "@/hooks/useSupabaseSessionStatus";
 import { Navigate } from "@tanstack/react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import {
-  ShieldCheck, AlertTriangle, Activity, Gauge, RefreshCw, Play, Loader2,
+  ShieldCheck, AlertTriangle, Activity, Gauge, RefreshCw, Loader2,
+  CheckCircle2, XCircle, AlertOctagon, ChevronDown, Sparkles, Info, Clock,
 } from "lucide-react";
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend, BarChart, Bar,
-} from "recharts";
+
+type GovChecks = {
+  bias?: { verdict: string; detail: string; categories?: string[] };
+  toxicity?: { verdict: string; detail: string; level?: string };
+  compliance?: { verdict: string; detail: string; issues?: string[] };
+  hallucination?: { verdict: string; detail: string; risk?: string };
+};
+type Transparency = {
+  confidence?: number;
+  governance_score?: number;
+  risk_indicator?: "Low" | "Medium" | "High";
+  reevaluation_count?: number;
+  evaluated_by?: string;
+  checks?: GovChecks;
+  evaluated_at?: string;
+};
 
 type LogRow = {
   id: string;
@@ -38,28 +53,53 @@ type LogRow = {
   action_taken: string | null;
   compliance_status: string;
   source: string;
+  transparency_notes: Transparency | null;
   created_at: string;
+  updated_at?: string;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  Safe: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
-  Warning: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
-  "High Risk": "bg-orange-500/15 text-orange-700 dark:text-orange-400 border-orange-500/30",
-  Critical: "bg-destructive/15 text-destructive border-destructive/30",
+const RISK_TONE: Record<string, string> = {
+  Low: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30",
+  Medium: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+  High: "bg-destructive/15 text-destructive border-destructive/30",
 };
-const ACTION_COLORS: Record<string, string> = {
-  Passed: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  Flagged: "bg-yellow-500/10 text-yellow-700 dark:text-yellow-400",
-  Escalated: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
-  Blocked: "bg-destructive/10 text-destructive",
-};
-const PIE_COLORS = ["#10b981", "#eab308", "#f97316", "#ef4444"];
+
+function RiskBadge({ risk }: { risk: "Low" | "Medium" | "High" }) {
+  const dot = risk === "Low" ? "🟢" : risk === "Medium" ? "🟡" : "🔴";
+  return <Badge variant="outline" className={`${RISK_TONE[risk]} font-medium`}>{dot} {risk} Risk</Badge>;
+}
+
+function StatusPill({ status }: { status: "PASSED" | "WARNING" | "FAILED" }) {
+  const cls =
+    status === "PASSED" ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-500/30"
+    : status === "WARNING" ? "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30"
+    : "bg-destructive/15 text-destructive border-destructive/30";
+  const Icon = status === "PASSED" ? CheckCircle2 : status === "WARNING" ? AlertTriangle : XCircle;
+  return (
+    <Badge variant="outline" className={`${cls} gap-1 font-semibold`}>
+      <Icon className="h-3.5 w-3.5" /> {status}
+    </Badge>
+  );
+}
+
+function scoreToStatus(score: number): "PASSED" | "WARNING" | "FAILED" {
+  if (score >= 80) return "PASSED";
+  if (score >= 50) return "WARNING";
+  return "FAILED";
+}
+
+function riskFromScore(risk_score: number): "Low" | "Medium" | "High" {
+  if (risk_score <= 20) return "Low";
+  if (risk_score <= 50) return "Medium";
+  return "High";
+}
+
+/* ------------------------------------------------------------------ */
 
 export function GovernanceDashboard() {
   const listFn = useServerFn(adminListGovernanceLogs);
   const statsFn = useServerFn(adminGovernanceStats);
-  const evalNewFn = useServerFn(adminEvaluateNewMessages);
-  const reevalAllFn = useServerFn(adminReevaluateAll);
+  const reevalTicketFn = useServerFn(adminReevaluateTicket);
   const { status: sessionStatus, accessToken } = useSupabaseSession();
   const authed = sessionStatus === "authenticated" && !!accessToken;
   const authHeaders = useMemo(
@@ -71,344 +111,491 @@ export function GovernanceDashboard() {
     queryKey: ["gov-logs", accessToken],
     queryFn: async () => {
       if (!authHeaders) throw new Error("Unauthorized");
-      return listFn({ headers: authHeaders }) as Promise<LogRow[]>;
+      return (await listFn({ headers: authHeaders })) as unknown as LogRow[];
     },
     refetchInterval: authed ? 15_000 : false,
     enabled: authed,
     retry: false,
   });
+
   const statsQ = useQuery({
     queryKey: ["gov-stats", accessToken],
     queryFn: async () => {
       if (!authHeaders) throw new Error("Unauthorized");
-      return statsFn({ headers: authHeaders }) as Promise<LogRow[]>;
+      return (await statsFn({ headers: authHeaders })) as unknown as LogRow[];
     },
     refetchInterval: authed ? 15_000 : false,
     enabled: authed,
     retry: false,
   });
 
-  const [evaluatingNew, setEvaluatingNew] = useState(false);
-  const [reevalRunning, setReevalRunning] = useState(false);
-
   const logs = logsQ.data ?? [];
   const stats = statsQ.data ?? [];
 
-  const totals = useMemo(() => {
+  const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
+
+  const metrics = useMemo(() => {
     const total = stats.length;
-    const aiCount = stats.filter((s) => s.sender !== "User").length;
-    const flagged = stats.filter((s) => s.compliance_status !== "Passed").length;
-    const highRisk = stats.filter((s) => s.risk_level === "High Risk" || s.risk_level === "Critical").length;
-    const avg = total ? Math.round(stats.reduce((a, s) => a + s.risk_score, 0) / total) : 0;
-    return { total, aiCount, flagged, highRisk, avg };
+    if (total === 0) return null;
+    const scores = stats.map((s) => 100 - s.risk_score);
+    const confidences = stats.map((s) => s.transparency_notes?.confidence ?? 85);
+    const passed = stats.filter((s) => s.compliance_status === "Passed").length;
+    const flagged = total - passed;
+    const bias = stats.filter((s) => (s.identified_risks ?? []).some((r) => typeof r === "string" && (r === "bias" || r.startsWith("bias:")))).length;
+    const toxicity = stats.filter((s) => {
+      const t = s.transparency_notes?.checks?.toxicity;
+      return t && t.verdict !== "pass";
+    }).length;
+    const compFails = stats.filter((s) => {
+      const c = s.transparency_notes?.checks?.compliance;
+      return c ? c.verdict === "fail" : s.compliance_status === "Blocked";
+    }).length;
+    const avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / total);
+    const avgConf = Math.round(confidences.reduce((a, b) => a + b, 0) / total);
+    return { total, passed, flagged, avgScore, avgConf, bias, toxicity, compFails };
   }, [stats]);
 
-  const statusDist = useMemo(() => {
-    const buckets: Record<string, number> = { Safe: 0, Warning: 0, "High Risk": 0, Critical: 0 };
-    for (const s of stats) buckets[s.risk_level] = (buckets[s.risk_level] ?? 0) + 1;
-    return Object.entries(buckets).map(([name, value]) => ({ name, value }));
-  }, [stats]);
-
-  const trend = useMemo(() => {
-    const byDay = new Map<string, { day: string; avg: number; count: number; flagged: number }>();
-    for (const s of stats) {
-      const day = new Date(s.created_at).toISOString().slice(0, 10);
-      const cur = byDay.get(day) ?? { day, avg: 0, count: 0, flagged: 0 };
-      cur.avg = (cur.avg * cur.count + s.risk_score) / (cur.count + 1);
+  // Group logs into per-ticket evaluations for the history table
+  const ticketRows = useMemo(() => {
+    const map = new Map<string, {
+      ticketId: string;
+      lastEvaluatedAt: string;
+      avgScore: number;
+      worstRisk: "Low" | "Medium" | "High";
+      status: "PASSED" | "WARNING" | "FAILED";
+      count: number;
+      reevalCount: number;
+      logs: LogRow[];
+    }>();
+    for (const l of logs) {
+      if (!l.ticket_id) continue;
+      const cur = map.get(l.ticket_id) ?? {
+        ticketId: l.ticket_id,
+        lastEvaluatedAt: l.created_at,
+        avgScore: 0,
+        worstRisk: "Low" as const,
+        status: "PASSED" as const,
+        count: 0,
+        reevalCount: 0,
+        logs: [],
+      };
+      cur.logs.push(l);
       cur.count += 1;
-      if (s.compliance_status !== "Passed") cur.flagged += 1;
-      byDay.set(day, cur);
+      cur.reevalCount = Math.max(cur.reevalCount, l.transparency_notes?.reevaluation_count ?? 0);
+      if (new Date(l.created_at) > new Date(cur.lastEvaluatedAt)) cur.lastEvaluatedAt = l.created_at;
+      const riskOrder = { Low: 0, Medium: 1, High: 2 };
+      const thisRisk = riskFromScore(l.risk_score);
+      if (riskOrder[thisRisk] > riskOrder[cur.worstRisk]) cur.worstRisk = thisRisk;
+      map.set(l.ticket_id, cur);
     }
-    return Array.from(byDay.values()).map((d) => ({ ...d, avg: Math.round(d.avg) }));
-  }, [stats]);
-
-  const biasDist = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const s of stats) {
-      for (const r of s.identified_risks ?? []) {
-        if (typeof r === "string" && r.startsWith("bias:")) {
-          const k = r.slice(5);
-          counts[k] = (counts[k] ?? 0) + 1;
-        }
-      }
+    for (const row of map.values()) {
+      const scores = row.logs.map((x) => 100 - x.risk_score);
+      row.avgScore = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+      row.status = scoreToStatus(row.avgScore);
     }
-    return Object.entries(counts).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [stats]);
+    return Array.from(map.values()).sort((a, b) => b.lastEvaluatedAt.localeCompare(a.lastEvaluatedAt));
+  }, [logs]);
 
-  const monthly = useMemo(() => {
-    const byMonth = new Map<string, { month: string; avg: number; count: number; flagged: number; topCats: Record<string, number> }>();
-    for (const s of stats) {
-      const m = new Date(s.created_at).toISOString().slice(0, 7);
-      const cur = byMonth.get(m) ?? { month: m, avg: 0, count: 0, flagged: 0, topCats: {} };
-      cur.avg = (cur.avg * cur.count + s.risk_score) / (cur.count + 1);
-      cur.count += 1;
-      if (s.compliance_status !== "Passed") cur.flagged += 1;
-      for (const r of s.identified_risks ?? []) cur.topCats[r] = (cur.topCats[r] ?? 0) + 1;
-      byMonth.set(m, cur);
-    }
-    return Array.from(byMonth.values()).map((r) => ({
-      ...r,
-      avg: Math.round(r.avg),
-      topCategory: Object.entries(r.topCats).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "—",
-    }));
-  }, [stats]);
+  if (sessionStatus === "signed-out") return <Navigate to="/admin/login" />;
 
-  const flaggedLogs = logs.filter((l) => l.compliance_status === "Flagged" || l.compliance_status === "Escalated" || l.compliance_status === "Blocked");
-  const categoryCounts = useMemo(() => {
-    const c: Record<string, number> = {};
-    for (const s of stats) for (const r of s.identified_risks ?? []) if (typeof r === "string" && !r.startsWith("bias:")) c[r] = (c[r] ?? 0) + 1;
-    return Object.entries(c).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
-  }, [stats]);
-
-  const runEvalNew = async () => {
-    if (!authHeaders) return toast.error("Please sign in again.");
-    setEvaluatingNew(true);
-    try {
-      const r = await evalNewFn({ headers: authHeaders });
-      toast.success(`Evaluated ${r.processed} new messages (${r.remaining} remaining)`);
-      logsQ.refetch(); statsQ.refetch();
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
-    finally { setEvaluatingNew(false); }
-  };
-  const runReevalAll = async () => {
-    if (!authHeaders) return toast.error("Please sign in again.");
-    setReevalRunning(true);
-    try {
-      const r = await reevalAllFn({ data: { limit: 100 }, headers: authHeaders });
-      toast.success(`Re-evaluated ${r.processed} messages`);
-      logsQ.refetch(); statsQ.refetch();
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
-    finally { setReevalRunning(false); }
+  const runReevalTicket = async (ticketId: string) => {
+    if (!authHeaders) { toast.error("Please sign in again."); return null; }
+    const r = await reevalTicketFn({ data: { ticketId }, headers: authHeaders });
+    await Promise.all([logsQ.refetch(), statsQ.refetch()]);
+    return r;
   };
 
-  if (sessionStatus === "signed-out") {
-    return <Navigate to="/admin/login" />;
-  }
-
-  const StatCard = ({ label, value, icon: Icon, tone = "default" }: { label: string; value: string | number; icon: typeof Gauge; tone?: "default" | "warn" | "danger" | "ok" }) => {
-    const toneCls = tone === "warn" ? "text-yellow-600 dark:text-yellow-400"
-      : tone === "danger" ? "text-destructive"
-      : tone === "ok" ? "text-emerald-600 dark:text-emerald-400"
-      : "text-foreground";
-    return (
-      <Card>
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-            <Icon className={`h-4 w-4 ${toneCls}`} />
-          </div>
-          <div className={`text-2xl font-bold mt-2 ${toneCls}`}>{value}</div>
-        </CardContent>
-      </Card>
-    );
-  };
+  const loading = logsQ.isLoading || statsQ.isLoading;
 
   return (
     <div className="space-y-6">
-      {/* Widgets */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <StatCard label="Total AI requests" value={totals.aiCount} icon={Activity} />
-        <StatCard label="Flagged responses" value={totals.flagged} icon={AlertTriangle} tone="warn" />
-        <StatCard label="High risk" value={totals.highRisk} icon={ShieldCheck} tone="danger" />
-        <StatCard label="Avg risk score" value={totals.avg} icon={Gauge} tone={totals.avg > 50 ? "warn" : "ok"} />
-        <StatCard label="Total evaluations" value={totals.total} icon={ShieldCheck} />
+      {/* KPI grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Total Tickets Evaluated" value={metrics?.total ?? 0} icon={Activity} empty={!metrics} />
+        <KpiCard label="Passed Evaluations" value={metrics?.passed ?? 0} icon={CheckCircle2} tone="ok" empty={!metrics} />
+        <KpiCard label="Flagged Tickets" value={metrics?.flagged ?? 0} icon={AlertTriangle} tone="warn" empty={!metrics} />
+        <KpiCard label="Avg Governance Score" value={metrics ? `${metrics.avgScore}/100` : "—"} icon={Gauge} tone={metrics && metrics.avgScore >= 80 ? "ok" : "warn"} empty={!metrics} />
+        <KpiCard label="Avg Confidence" value={metrics ? `${metrics.avgConf}%` : "—"} icon={Sparkles} empty={!metrics} />
+        <KpiCard label="Bias Alerts" value={metrics?.bias ?? 0} icon={AlertOctagon} tone="warn" empty={!metrics} />
+        <KpiCard label="Toxicity Alerts" value={metrics?.toxicity ?? 0} icon={AlertTriangle} tone="warn" empty={!metrics} />
+        <KpiCard label="Compliance Failures" value={metrics?.compFails ?? 0} icon={ShieldCheck} tone="danger" empty={!metrics} />
       </div>
 
-      {/* Charts */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Risk trend over time</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            {trend.length === 0 ? <Empty /> : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trend}>
-                  <XAxis dataKey="day" fontSize={10} />
-                  <YAxis domain={[0, 100]} fontSize={10} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                  <Line type="monotone" dataKey="avg" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Compliance status distribution</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            {statusDist.every((s) => s.value === 0) ? <Empty /> : (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={statusDist} dataKey="value" nameKey="name" outerRadius={80} label>
-                    {statusDist.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-                  </Pie>
-                  <Legend />
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Bias categories detected</CardTitle></CardHeader>
-          <CardContent className="h-64">
-            {biasDist.length === 0 ? <Empty label="No bias detected." /> : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={biasDist}>
-                  <XAxis dataKey="name" fontSize={10} />
-                  <YAxis fontSize={10} allowDecimals={false} />
-                  <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }} />
-                  <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-semibold">Monthly analytics</CardTitle></CardHeader>
-          <CardContent className="p-0">
-            <div className="max-h-64 overflow-auto">
-              <table className="w-full text-xs">
-                <thead className="text-muted-foreground border-b">
-                  <tr><th className="text-left p-2">Month</th><th className="text-left p-2">Avg risk</th><th className="text-left p-2">Flagged</th><th className="text-left p-2">Top category</th></tr>
-                </thead>
-                <tbody>
-                  {monthly.length === 0 ? (
-                    <tr><td colSpan={4} className="p-4 text-center text-muted-foreground">No data yet.</td></tr>
-                  ) : monthly.map((m) => (
-                    <tr key={m.month} className="border-b last:border-0">
-                      <td className="p-2 font-mono">{m.month}</td>
-                      <td className="p-2">{m.avg}</td>
-                      <td className="p-2">{m.flagged}</td>
-                      <td className="p-2">{m.topCategory}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {!loading && !metrics && (
+        <Card className="border-dashed">
+          <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+            <ShieldCheck className="h-10 w-10 text-muted-foreground" />
+            <div>
+              <div className="text-lg font-semibold">No evaluations yet</div>
+              <p className="text-sm text-muted-foreground max-w-md mt-1">
+                Governance runs automatically for every AI and admin response in every conversation. Start a chat, or open an existing ticket below and click <span className="font-medium">Re-evaluate Ticket</span> to run the checks now.
+              </p>
             </div>
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      {/* Tabs */}
-      <Tabs defaultValue="logs" className="w-full">
-        <TabsList className="grid grid-cols-2 lg:grid-cols-5 h-auto">
-          <TabsTrigger value="logs">Compliance logs</TabsTrigger>
-          <TabsTrigger value="reports">Risk reports</TabsTrigger>
-          <TabsTrigger value="manual">Manual reviews</TabsTrigger>
-          <TabsTrigger value="evalnew">Evaluate new</TabsTrigger>
-          <TabsTrigger value="reevalall">Re-evaluate all</TabsTrigger>
-        </TabsList>
+      {/* Evaluation history */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Clock className="h-4 w-4" /> Evaluation history
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <ScrollArea className="max-h-[520px]">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-card border-b text-muted-foreground z-10">
+                <tr>
+                  <th className="text-left p-3">Ticket ID</th>
+                  <th className="text-left p-3">Last evaluated</th>
+                  <th className="text-left p-3">Governance score</th>
+                  <th className="text-left p-3">Risk level</th>
+                  <th className="text-left p-3">Status</th>
+                  <th className="text-left p-3">Evaluated by</th>
+                  <th className="text-left p-3">Re-evaluations</th>
+                  <th className="text-right p-3">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ticketRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                      {loading ? "Loading evaluations…" : "No ticket evaluations yet. Send a chat message or trigger a re-evaluation to populate this table."}
+                    </td>
+                  </tr>
+                ) : ticketRows.map((r) => (
+                  <tr key={r.ticketId} className="border-b hover:bg-muted/30">
+                    <td className="p-3 font-mono text-[10px]">{r.ticketId.slice(0, 8)}…</td>
+                    <td className="p-3 whitespace-nowrap">{new Date(r.lastEvaluatedAt).toLocaleString()}</td>
+                    <td className="p-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono">{r.avgScore}/100</span>
+                        <Progress value={r.avgScore} className="h-1.5 w-16" />
+                      </div>
+                    </td>
+                    <td className="p-3"><RiskBadge risk={r.worstRisk} /></td>
+                    <td className="p-3"><StatusPill status={r.status} /></td>
+                    <td className="p-3"><Badge variant="secondary" className="text-[10px]">AI</Badge></td>
+                    <td className="p-3 font-mono">{r.reevalCount}</td>
+                    <td className="p-3 text-right">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedTicket(r.ticketId)}>
+                        View details
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollArea>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="logs">
-          <LogsTable rows={logs} />
-        </TabsContent>
-
-        <TabsContent value="reports">
-          <Card>
-            <CardHeader><CardTitle className="text-sm font-semibold">Top detected categories</CardTitle></CardHeader>
-            <CardContent>
-              {categoryCounts.length === 0 ? <Empty /> : (
-                <div className="space-y-2">
-                  {categoryCounts.map((c) => (
-                    <div key={c.name} className="flex items-center justify-between text-sm">
-                      <span className="capitalize">{c.name}</span>
-                      <Badge variant="secondary">{c.value}</Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          <Card className="mt-4">
-            <CardHeader><CardTitle className="text-sm font-semibold">High-risk conversations</CardTitle></CardHeader>
-            <CardContent className="p-0">
-              <LogsTable rows={logs.filter((l) => l.risk_level === "High Risk" || l.risk_level === "Critical")} embedded />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="manual">
-          <LogsTable rows={flaggedLogs} />
-        </TabsContent>
-
-        <TabsContent value="evalnew">
-          <Card>
-            <CardContent className="p-6 space-y-4">
-              <p className="text-sm text-muted-foreground">Analyze conversation messages that haven't been evaluated yet (up to 50 per run).</p>
-              <Button onClick={runEvalNew} disabled={evaluatingNew}>
-                {evaluatingNew ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-                Evaluate new tickets
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="reevalall">
-          <Card>
-            <CardContent className="p-6 space-y-4">
-              <p className="text-sm text-muted-foreground">Rerun governance analysis for the 100 most recent conversation messages. Existing evaluations are updated in place.</p>
-              <Button onClick={runReevalAll} disabled={reevalRunning} variant="destructive">
-                {reevalRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                Re-evaluate all tickets
-              </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      <TicketDetailDialog
+        ticketId={selectedTicket}
+        onOpenChange={(o) => !o && setSelectedTicket(null)}
+        logs={selectedTicket ? logs.filter((l) => l.ticket_id === selectedTicket) : []}
+        onReevaluate={runReevalTicket}
+      />
     </div>
   );
 }
 
-function Empty({ label = "No data yet." }: { label?: string }) {
-  return <div className="h-full flex items-center justify-center text-xs text-muted-foreground">{label}</div>;
+function KpiCard({
+  label, value, icon: Icon, tone = "default", empty,
+}: { label: string; value: string | number; icon: typeof Gauge; tone?: "default" | "warn" | "danger" | "ok"; empty?: boolean }) {
+  const toneCls = empty ? "text-muted-foreground"
+    : tone === "warn" ? "text-yellow-600 dark:text-yellow-400"
+    : tone === "danger" ? "text-destructive"
+    : tone === "ok" ? "text-emerald-600 dark:text-emerald-400"
+    : "text-foreground";
+  return (
+    <Card>
+      <CardContent className="p-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
+          <Icon className={`h-4 w-4 ${toneCls}`} />
+        </div>
+        <div className={`text-2xl font-bold mt-2 ${toneCls}`}>{empty ? "No data" : value}</div>
+        {empty && <div className="text-[10px] text-muted-foreground mt-1">No evaluations yet</div>}
+      </CardContent>
+    </Card>
+  );
 }
 
-function LogsTable({ rows, embedded = false }: { rows: LogRow[]; embedded?: boolean }) {
-  const body = (
-    <ScrollArea className="h-[520px]">
-      <table className="w-full text-xs">
-        <thead className="sticky top-0 bg-card border-b text-muted-foreground">
-          <tr>
-            <th className="text-left p-2">Time</th>
-            <th className="text-left p-2">Sender</th>
-            <th className="text-left p-2">Preview</th>
-            <th className="text-left p-2">Score</th>
-            <th className="text-left p-2">Status</th>
-            <th className="text-left p-2">Action</th>
-            <th className="text-left p-2">Sentiment</th>
-            <th className="text-left p-2">Categories</th>
-            <th className="text-left p-2">PII</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <tr><td colSpan={9} className="p-6 text-center text-muted-foreground">No evaluations yet. Trigger analysis by chatting or click "Evaluate new tickets".</td></tr>
-          ) : rows.map((l) => (
-            <tr key={l.id} className="border-b hover:bg-muted/30 align-top">
-              <td className="p-2 whitespace-nowrap font-mono text-[10px]">{new Date(l.created_at).toLocaleString()}</td>
-              <td className="p-2"><Badge variant="outline" className="text-[10px]">{l.sender ?? "—"}</Badge></td>
-              <td className="p-2 max-w-[280px]">
-                <div className="line-clamp-2">{l.message_preview}</div>
-                {l.governance_explanation && <div className="text-muted-foreground text-[10px] mt-1 italic line-clamp-2">{l.governance_explanation}</div>}
-              </td>
-              <td className="p-2 font-mono">{l.risk_score}</td>
-              <td className="p-2"><Badge className={`text-[10px] ${STATUS_COLORS[l.risk_level] ?? ""}`}>{l.risk_level}</Badge></td>
-              <td className="p-2"><span className={`text-[10px] px-1.5 py-0.5 rounded ${ACTION_COLORS[l.compliance_status] ?? ""}`}>{l.compliance_status}</span></td>
-              <td className="p-2">{l.sentiment ?? "—"}</td>
-              <td className="p-2">
-                <div className="flex flex-wrap gap-1">
-                  {(l.identified_risks ?? []).map((r, i) => <Badge key={i} variant="secondary" className="text-[10px]">{r}</Badge>)}
+/* ------------------------------------------------------------------ */
+/* Ticket detail dialog                                                */
+/* ------------------------------------------------------------------ */
+
+const STEPS = [
+  { key: "bias", label: "Running Bias Detection" },
+  { key: "toxicity", label: "Running Toxicity Detection" },
+  { key: "compliance", label: "Running Compliance Check" },
+  { key: "hallucination", label: "Running Hallucination Check" },
+  { key: "score", label: "Calculating Governance Score" },
+] as const;
+
+function TicketDetailDialog({
+  ticketId, onOpenChange, logs, onReevaluate,
+}: {
+  ticketId: string | null;
+  onOpenChange: (open: boolean) => void;
+  logs: LogRow[];
+  onReevaluate: (ticketId: string) => Promise<{ processed: number } | null>;
+}) {
+  const [running, setRunning] = useState(false);
+  const [stepIdx, setStepIdx] = useState(-1); // -1 = idle, 0..STEPS.length-1 running/done
+  const [transcript, setTranscript] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(true);
+  const timers = useRef<number[]>([]);
+
+  useEffect(() => {
+    return () => { timers.current.forEach((t) => window.clearTimeout(t)); };
+  }, []);
+
+  useEffect(() => {
+    if (!ticketId) {
+      setRunning(false); setStepIdx(-1); setTranscript([]);
+      timers.current.forEach((t) => window.clearTimeout(t));
+      timers.current = [];
+    }
+  }, [ticketId]);
+
+  // Aggregated latest per-ticket view
+  const latest = logs[0];
+  const scores = logs.map((l) => 100 - l.risk_score);
+  const avgScore = scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  const avgConf = logs.length
+    ? Math.round(logs.reduce((a, l) => a + (l.transparency_notes?.confidence ?? 85), 0) / logs.length)
+    : 0;
+  const worstRisk: "Low" | "Medium" | "High" = logs.reduce((acc, l) => {
+    const r = riskFromScore(l.risk_score);
+    const order = { Low: 0, Medium: 1, High: 2 };
+    return order[r] > order[acc] ? r : acc;
+  }, "Low" as "Low" | "Medium" | "High");
+  const status = scoreToStatus(avgScore);
+  const reevalCount = logs.reduce((m, l) => Math.max(m, l.transparency_notes?.reevaluation_count ?? 0), 0);
+
+  const aggChecks = useMemo(() => {
+    // pick worst verdict across all logs for each check
+    const rank = { pass: 0, warn: 1, fail: 2 } as const;
+    const merge = <K extends keyof GovChecks>(k: K) => {
+      let best: GovChecks[K] | undefined;
+      for (const l of logs) {
+        const c = l.transparency_notes?.checks?.[k];
+        if (!c) continue;
+        if (!best || rank[c.verdict as keyof typeof rank] > rank[best.verdict as keyof typeof rank]) best = c;
+      }
+      return best;
+    };
+    return {
+      bias: merge("bias"),
+      toxicity: merge("toxicity"),
+      compliance: merge("compliance"),
+      hallucination: merge("hallucination"),
+    };
+  }, [logs]);
+
+  const runReevaluation = async () => {
+    if (!ticketId) return;
+    setRunning(true);
+    setTranscript([`${new Date().toLocaleTimeString()}  Starting evaluation…`]);
+    setStepIdx(0);
+    timers.current.forEach((t) => window.clearTimeout(t));
+    timers.current = [];
+
+    const push = (line: string) => setTranscript((prev) => [...prev, `${new Date().toLocaleTimeString()}  ${line}`]);
+
+    // Kick off the actual server call in parallel with the animation
+    const serverPromise = onReevaluate(ticketId);
+
+    STEPS.forEach((s, i) => {
+      const t = window.setTimeout(() => {
+        setStepIdx(i);
+        push(`${s.label}…`);
+        const done = window.setTimeout(() => push(`✓ ${s.label} completed.`), 550);
+        timers.current.push(done);
+      }, i * 900);
+      timers.current.push(t);
+    });
+
+    try {
+      const r = await serverPromise;
+      const wait = window.setTimeout(async () => {
+        push(`Final Governance Score: ${avgScore}`);
+        push(`Result: ${status}`);
+        push(`Analyzed ${r?.processed ?? 0} messages in this ticket.`);
+        setRunning(false);
+        toast.success("Re-evaluation complete");
+      }, STEPS.length * 900 + 400);
+      timers.current.push(wait);
+    } catch (e) {
+      push(`✗ Failed: ${e instanceof Error ? e.message : "unknown error"}`);
+      setRunning(false);
+      toast.error("Re-evaluation failed");
+    }
+  };
+
+  const open = !!ticketId;
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldCheck className="h-5 w-5" />
+            Governance Result — Ticket {ticketId?.slice(0, 8)}…
+          </DialogTitle>
+        </DialogHeader>
+
+        {logs.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            No evaluations recorded for this ticket yet. Click Re-evaluate to run the governance engine.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Header stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <SummaryStat label="Governance Status" value={<StatusPill status={status} />} />
+              <SummaryStat label="Governance Score" value={<span className="text-xl font-bold">{avgScore}/100</span>} />
+              <SummaryStat label="Confidence" value={<span className="text-xl font-bold">{avgConf}%</span>} />
+              <SummaryStat label="Risk Level" value={<RiskBadge risk={worstRisk} />} />
+            </div>
+
+            {/* Checks panel */}
+            <div className="grid md:grid-cols-2 gap-3">
+              <CheckPanel title="Bias Check" verdict={aggChecks.bias?.verdict} detail={aggChecks.bias?.detail ?? "No bias detected."} extra={aggChecks.bias?.categories} />
+              <CheckPanel title="Toxicity Check" verdict={aggChecks.toxicity?.verdict} detail={aggChecks.toxicity?.detail ?? "Safe."} extra={aggChecks.toxicity?.level ? [`Level: ${aggChecks.toxicity.level}`] : undefined} />
+              <CheckPanel title="Compliance" verdict={aggChecks.compliance?.verdict} detail={aggChecks.compliance?.detail ?? "Passed."} extra={aggChecks.compliance?.issues} />
+              <CheckPanel title="Hallucination Risk" verdict={aggChecks.hallucination?.verdict} detail={aggChecks.hallucination?.detail ?? "Low."} extra={aggChecks.hallucination?.risk ? [`Risk: ${aggChecks.hallucination.risk}`] : undefined} />
+            </div>
+
+            {/* Explanation */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2"><Info className="h-4 w-4" /> AI Explanation</CardTitle>
+              </CardHeader>
+              <CardContent className="text-sm text-muted-foreground">
+                {latest?.governance_explanation || "The response complies with governance policies. No harmful language, bias, or privacy risks were detected."}
+              </CardContent>
+            </Card>
+
+            {/* Timeline */}
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Governance Timeline</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ol className="relative border-l pl-4 space-y-2 text-sm">
+                  {[
+                    "Ticket Created",
+                    "AI Evaluation Started",
+                    "Bias Detection Completed",
+                    "Safety Check Completed",
+                    "Compliance Completed",
+                    "Evaluation Finished",
+                  ].map((label) => (
+                    <li key={label} className="relative">
+                      <span className="absolute -left-[21px] top-1.5 h-2 w-2 rounded-full bg-primary" />
+                      <span>{label}</span>
+                    </li>
+                  ))}
+                </ol>
+                <div className="text-[11px] text-muted-foreground mt-3">
+                  Last evaluated {latest ? new Date(latest.created_at).toLocaleString() : "—"} · {logs.length} message{logs.length === 1 ? "" : "s"} analyzed · {reevalCount} re-evaluation{reevalCount === 1 ? "" : "s"}
                 </div>
-              </td>
-              <td className="p-2">
-                <div className="flex flex-wrap gap-1">
-                  {(l.pii_detected ?? []).map((r, i) => <Badge key={i} variant="destructive" className="text-[10px]">{r}</Badge>)}
+              </CardContent>
+            </Card>
+
+            {/* Re-evaluate action + staged progress */}
+            <Card>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-sm font-semibold">Re-run governance analysis</div>
+                    <div className="text-xs text-muted-foreground">Runs bias, toxicity, compliance and hallucination checks on every message in this ticket.</div>
+                  </div>
+                  <Button onClick={runReevaluation} disabled={running}>
+                    {running ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Re-evaluate Ticket
+                  </Button>
                 </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </ScrollArea>
+                {(running || stepIdx >= 0) && (
+                  <div className="space-y-2 pt-2 border-t">
+                    {STEPS.map((s, i) => {
+                      const state = i < stepIdx ? "done" : i === stepIdx ? (running ? "run" : "done") : "pending";
+                      return (
+                        <div key={s.key} className="flex items-center gap-2 text-sm">
+                          {state === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            : state === "run" ? <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                            : <span className="h-4 w-4 rounded-full border border-muted-foreground/30" />}
+                          <span className={state === "pending" ? "text-muted-foreground" : ""}>{s.label}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Collapsible logs */}
+            <Collapsible open={showLogs} onOpenChange={setShowLogs}>
+              <Card>
+                <CollapsibleTrigger asChild>
+                  <button className="w-full flex items-center justify-between p-4 text-left">
+                    <span className="text-sm font-semibold">Governance Logs</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${showLogs ? "rotate-180" : ""}`} />
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <CardContent className="pt-0">
+                    <pre className="bg-muted/50 rounded p-3 text-[11px] font-mono max-h-56 overflow-auto whitespace-pre-wrap">
+{transcript.length === 0
+  ? "Click 'Re-evaluate Ticket' to stream a live log of each governance check."
+  : transcript.join("\n")}
+                    </pre>
+                  </CardContent>
+                </CollapsibleContent>
+              </Card>
+            </Collapsible>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
-  return embedded ? body : <Card><CardContent className="p-0">{body}</CardContent></Card>;
+}
+
+function SummaryStat({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <Card>
+      <CardContent className="p-3">
+        <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</div>
+        <div className="mt-1">{value}</div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CheckPanel({
+  title, verdict, detail, extra,
+}: { title: string; verdict?: string; detail: string; extra?: string[] }) {
+  const v = verdict ?? "pass";
+  const cls = v === "fail" ? "border-destructive/40 bg-destructive/5"
+    : v === "warn" ? "border-yellow-500/40 bg-yellow-500/5"
+    : "border-emerald-500/40 bg-emerald-500/5";
+  const Icon = v === "fail" ? XCircle : v === "warn" ? AlertTriangle : CheckCircle2;
+  const iconCls = v === "fail" ? "text-destructive" : v === "warn" ? "text-yellow-600 dark:text-yellow-400" : "text-emerald-600 dark:text-emerald-400";
+  return (
+    <div className={`rounded-lg border p-3 ${cls}`}>
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-semibold">{title}</div>
+        <Icon className={`h-4 w-4 ${iconCls}`} />
+      </div>
+      <div className="text-xs text-muted-foreground mt-1">{detail}</div>
+      {extra && extra.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {extra.map((e, i) => <Badge key={i} variant="secondary" className="text-[10px]">{e}</Badge>)}
+        </div>
+      )}
+    </div>
+  );
 }
