@@ -292,12 +292,12 @@ export async function scheduleGovernanceAnalysis(params: {
   sender: GovSender;
   message: string;
   createdAt?: string;
+  incrementReeval?: boolean;
 }): Promise<void> {
   try {
     const analysis = await analyzeMessage(params.message, params.sender);
     await upsertLog({ ...params, analysis });
   } catch (err) {
-    // Swallow — governance failures are silent by design.
     console.warn("[governance] analysis failed:", err instanceof Error ? err.message : err);
   }
 }
@@ -306,13 +306,16 @@ export async function scheduleGovernanceAnalysis(params: {
 /* Admin server functions                                             */
 /* ------------------------------------------------------------------ */
 
+const LOG_COLUMNS =
+  "id, ticket_id, conversation_id, sender, message_preview, risk_score, risk_level, status_label, identified_risks, sentiment, pii_detected, governance_explanation, action_taken, compliance_status, source, transparency_notes, created_at, updated_at";
+
 export const adminListGovernanceLogs = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("compliance_logs")
-      .select("id, ticket_id, conversation_id, sender, message_preview, risk_score, risk_level, status_label, identified_risks, sentiment, pii_detected, governance_explanation, action_taken, compliance_status, source, created_at")
+      .select(LOG_COLUMNS)
       .order("created_at", { ascending: false })
       .limit(1000);
     if (error) throw new Error(error.message);
@@ -325,11 +328,41 @@ export const adminGovernanceStats = createServerFn({ method: "GET" })
     await assertAdmin(context.userId);
     const { data, error } = await supabaseAdmin
       .from("compliance_logs")
-      .select("risk_score, risk_level, sender, identified_risks, compliance_status, created_at")
+      .select("risk_score, risk_level, sender, identified_risks, compliance_status, transparency_notes, created_at")
       .order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     return data ?? [];
   });
+
+export const adminReevaluateTicket = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) =>
+    z.object({ ticketId: z.string().uuid() }).parse(input),
+  )
+  .handler(async ({ data, context }) => {
+    await assertAdmin(context.userId);
+    const { data: convs, error } = await supabaseAdmin
+      .from("conversations")
+      .select("id, ticket_id, role, message, created_at")
+      .eq("ticket_id", data.ticketId)
+      .order("created_at", { ascending: true });
+    if (error) throw new Error(error.message);
+    let processed = 0;
+    for (const c of convs ?? []) {
+      const sender: GovSender = c.role === "user" ? "User" : c.role === "admin" ? "Admin" : "AI";
+      await scheduleGovernanceAnalysis({
+        conversationId: c.id,
+        ticketId: c.ticket_id,
+        sender,
+        message: c.message,
+        createdAt: c.created_at,
+        incrementReeval: true,
+      });
+      processed++;
+    }
+    return { processed };
+  });
+
 
 export const adminEvaluateNewMessages = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
