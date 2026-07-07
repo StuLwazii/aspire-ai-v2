@@ -208,6 +208,7 @@ export function GovernanceDashboard() {
   };
 
   const loading = logsQ.isLoading || statsQ.isLoading;
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState(false);
 
   const runEvaluateAll = async () => {
