@@ -5,6 +5,7 @@ import {
   adminListGovernanceLogs,
   adminGovernanceStats,
   adminReevaluateTicket,
+  adminReevaluateAll,
 } from "@/lib/governance.functions";
 import { useSupabaseSession } from "@/hooks/useSupabaseSessionStatus";
 import { Navigate } from "@tanstack/react-router";
