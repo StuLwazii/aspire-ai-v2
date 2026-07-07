@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS compliance_logs_conversation_id_unique ON public.compliance_logs (conversation_id) WHERE conversation_id IS NOT NULL;

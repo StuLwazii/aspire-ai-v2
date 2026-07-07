@@ -283,8 +283,8 @@ async function upsertLog(params: {
 }
 
 /**
- * Fire-and-forget analysis. Never throws — governance work must not break
- * the chat or ticket pipeline. Safe to call after conversation inserts.
+ * Analyze + persist one message. Returns true on save success, false on failure.
+ * Never throws — governance work must not break the chat or ticket pipeline.
  */
 export async function scheduleGovernanceAnalysis(params: {
   conversationId: string | null;
@@ -293,12 +293,14 @@ export async function scheduleGovernanceAnalysis(params: {
   message: string;
   createdAt?: string;
   incrementReeval?: boolean;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     const analysis = await analyzeMessage(params.message, params.sender);
     await upsertLog({ ...params, analysis });
+    return true;
   } catch (err) {
     console.warn("[governance] analysis failed:", err instanceof Error ? err.message : err);
+    return false;
   }
 }
 
@@ -348,9 +350,10 @@ export const adminReevaluateTicket = createServerFn({ method: "POST" })
       .order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     let processed = 0;
+    let saved = 0;
     for (const c of convs ?? []) {
       const sender: GovSender = c.role === "user" ? "User" : c.role === "admin" ? "Admin" : "AI";
-      await scheduleGovernanceAnalysis({
+      const ok = await scheduleGovernanceAnalysis({
         conversationId: c.id,
         ticketId: c.ticket_id,
         sender,
@@ -359,8 +362,12 @@ export const adminReevaluateTicket = createServerFn({ method: "POST" })
         incrementReeval: true,
       });
       processed++;
+      if (ok) saved++;
     }
-    return { processed };
+    if (processed > 0 && saved === 0) {
+      throw new Error("Evaluation failed: no records were saved. Check server logs (AI gateway or database write error).");
+    }
+    return { processed: saved };
   });
 
 
@@ -409,9 +416,10 @@ export const adminReevaluateAll = createServerFn({ method: "POST" })
       .order("created_at", { ascending: false })
       .limit(data.limit);
     let processed = 0;
+    let saved = 0;
     for (const c of convs ?? []) {
       const sender: GovSender = c.role === "user" ? "User" : "AI";
-      await scheduleGovernanceAnalysis({
+      const ok = await scheduleGovernanceAnalysis({
         conversationId: c.id,
         ticketId: c.ticket_id,
         sender,
@@ -419,6 +427,10 @@ export const adminReevaluateAll = createServerFn({ method: "POST" })
         createdAt: c.created_at,
       });
       processed++;
+      if (ok) saved++;
     }
-    return { processed };
+    if (processed > 0 && saved === 0) {
+      throw new Error("Evaluation failed: no records were saved. Check server logs (AI gateway or database write error).");
+    }
+    return { processed: saved, attempted: processed };
   });
