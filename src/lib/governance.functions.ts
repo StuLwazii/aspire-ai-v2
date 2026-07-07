@@ -283,8 +283,8 @@ async function upsertLog(params: {
 }
 
 /**
- * Fire-and-forget analysis. Never throws — governance work must not break
- * the chat or ticket pipeline. Safe to call after conversation inserts.
+ * Analyze + persist one message. Returns true on save success, false on failure.
+ * Never throws — governance work must not break the chat or ticket pipeline.
  */
 export async function scheduleGovernanceAnalysis(params: {
   conversationId: string | null;
@@ -293,12 +293,14 @@ export async function scheduleGovernanceAnalysis(params: {
   message: string;
   createdAt?: string;
   incrementReeval?: boolean;
-}): Promise<void> {
+}): Promise<boolean> {
   try {
     const analysis = await analyzeMessage(params.message, params.sender);
     await upsertLog({ ...params, analysis });
+    return true;
   } catch (err) {
     console.warn("[governance] analysis failed:", err instanceof Error ? err.message : err);
+    return false;
   }
 }
 
