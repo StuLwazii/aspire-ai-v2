@@ -16,15 +16,25 @@ async function assertAdmin(userId: string) {
 async function callAI(body: unknown) {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY not configured");
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (res.status === 429) throw new Error("AI rate limit reached. Please try again shortly.");
-  if (res.status === 402) throw new Error("AI credits exhausted. Please top up in Workspace settings.");
-  if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
-  return res.json() as Promise<{ choices: Array<{ message: { tool_calls?: Array<{ function: { arguments: string } }> } }> }>;
+  const maxRetries = 4;
+  let delay = 1500;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 429) {
+      if (attempt === maxRetries - 1) throw new Error("AI rate limit reached. Please try again shortly.");
+      await new Promise((r) => setTimeout(r, delay));
+      delay *= 2;
+      continue;
+    }
+    if (res.status === 402) throw new Error("AI credits exhausted. Please top up in Workspace settings.");
+    if (!res.ok) throw new Error(`AI gateway error: ${res.status}`);
+    return res.json() as Promise<{ choices: Array<{ message: { tool_calls?: Array<{ function: { arguments: string } }> } }> }>;
+  }
+  throw new Error("AI rate limit reached. Please try again shortly.");
 }
 
 type TicketLite = {
