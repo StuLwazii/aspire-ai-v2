@@ -350,9 +350,10 @@ export const adminReevaluateTicket = createServerFn({ method: "POST" })
       .order("created_at", { ascending: true });
     if (error) throw new Error(error.message);
     let processed = 0;
+    let saved = 0;
     for (const c of convs ?? []) {
       const sender: GovSender = c.role === "user" ? "User" : c.role === "admin" ? "Admin" : "AI";
-      await scheduleGovernanceAnalysis({
+      const ok = await scheduleGovernanceAnalysis({
         conversationId: c.id,
         ticketId: c.ticket_id,
         sender,
@@ -361,8 +362,12 @@ export const adminReevaluateTicket = createServerFn({ method: "POST" })
         incrementReeval: true,
       });
       processed++;
+      if (ok) saved++;
     }
-    return { processed };
+    if (processed > 0 && saved === 0) {
+      throw new Error("Evaluation failed: no records were saved. Check server logs (AI gateway or database write error).");
+    }
+    return { processed: saved };
   });
 
 
