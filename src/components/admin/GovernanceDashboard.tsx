@@ -5,6 +5,7 @@ import {
   adminListGovernanceLogs,
   adminGovernanceStats,
   adminReevaluateTicket,
+  adminReevaluateAll,
 } from "@/lib/governance.functions";
 import { useSupabaseSession } from "@/hooks/useSupabaseSessionStatus";
 import { Navigate } from "@tanstack/react-router";
@@ -100,6 +101,7 @@ export function GovernanceDashboard() {
   const listFn = useServerFn(adminListGovernanceLogs);
   const statsFn = useServerFn(adminGovernanceStats);
   const reevalTicketFn = useServerFn(adminReevaluateTicket);
+  const reevalAllFn = useServerFn(adminReevaluateAll);
   const { status: sessionStatus, accessToken } = useSupabaseSession();
   const authed = sessionStatus === "authenticated" && !!accessToken;
   const authHeaders = useMemo(
@@ -206,9 +208,35 @@ export function GovernanceDashboard() {
   };
 
   const loading = logsQ.isLoading || statsQ.isLoading;
+  const [evaluating, setEvaluating] = useState(false);
+
+  const runEvaluateAll = async () => {
+    if (!authHeaders) { toast.error("Please sign in again."); return; }
+    setEvaluating(true);
+    try {
+      const r = await reevalAllFn({ data: { limit: 50 }, headers: authHeaders }) as { processed: number };
+      await Promise.all([logsQ.refetch(), statsQ.refetch()]);
+      toast.success(`Evaluation complete — ${r.processed} message${r.processed === 1 ? "" : "s"} analyzed.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Evaluation failed.");
+    } finally {
+      setEvaluating(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
+      {/* Header actions */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          Run governance checks across recent conversations. Results below refresh automatically.
+        </p>
+        <Button onClick={runEvaluateAll} disabled={evaluating || !authed} className="gap-2">
+          {evaluating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {evaluating ? "Running evaluation…" : "Run Evaluation"}
+        </Button>
+      </div>
+
       {/* KPI grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <KpiCard label="Total Tickets Evaluated" value={metrics?.total ?? 0} icon={Activity} empty={!metrics} />
