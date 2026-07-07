@@ -208,6 +208,7 @@ export function GovernanceDashboard() {
   };
 
   const loading = logsQ.isLoading || statsQ.isLoading;
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [evaluating, setEvaluating] = useState(false);
 
   const runEvaluateAll = async () => {
@@ -307,9 +308,32 @@ export function GovernanceDashboard() {
                     <td className="p-3"><Badge variant="secondary" className="text-[10px]">AI</Badge></td>
                     <td className="p-3 font-mono">{r.reevalCount}</td>
                     <td className="p-3 text-right">
-                      <Button size="sm" variant="outline" onClick={() => setSelectedTicket(r.ticketId)}>
-                        View details
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={rowBusy === r.ticketId}
+                          onClick={async () => {
+                            setRowBusy(r.ticketId);
+                            try {
+                              const res = await runReevalTicket(r.ticketId);
+                              if (res) toast.success(`Re-evaluated ${res.processed} message${res.processed === 1 ? "" : "s"}.`);
+                            } catch (e) {
+                              toast.error(e instanceof Error ? e.message : "Re-evaluation failed.");
+                            } finally {
+                              setRowBusy(null);
+                            }
+                          }}
+                        >
+                          {rowBusy === r.ticketId
+                            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            : <RefreshCw className="h-3.5 w-3.5" />}
+                          Re-evaluate
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => setSelectedTicket(r.ticketId)}>
+                          View details
+                        </Button>
+                      </div>
                     </td>
                   </tr>
                 ))}
