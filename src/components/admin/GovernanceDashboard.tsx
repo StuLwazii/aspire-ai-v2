@@ -101,6 +101,7 @@ export function GovernanceDashboard() {
   const listFn = useServerFn(adminListGovernanceLogs);
   const statsFn = useServerFn(adminGovernanceStats);
   const reevalTicketFn = useServerFn(adminReevaluateTicket);
+  const reevalAllFn = useServerFn(adminReevaluateAll);
   const { status: sessionStatus, accessToken } = useSupabaseSession();
   const authed = sessionStatus === "authenticated" && !!accessToken;
   const authHeaders = useMemo(
